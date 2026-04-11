@@ -12,6 +12,8 @@ fn main() {
             output_dir,
             format,
             base64,
+            threshold,
+            max_frames,
             output,
         } => {
             let result = tomegane::analyze(
@@ -20,6 +22,8 @@ fn main() {
                 output_dir.as_deref(),
                 &format,
                 base64,
+                threshold,
+                max_frames,
             );
 
             match result {

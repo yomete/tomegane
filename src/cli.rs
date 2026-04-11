@@ -34,6 +34,14 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         base64: bool,
 
+        /// Change threshold for smart frame selection (0.0 = keep all, 1.0 = only dramatic changes)
+        #[arg(short, long)]
+        threshold: Option<f64>,
+
+        /// Maximum number of key frames to return
+        #[arg(short, long)]
+        max_frames: Option<usize>,
+
         /// Write JSON output to a file instead of stdout
         #[arg(long)]
         output: Option<String>,

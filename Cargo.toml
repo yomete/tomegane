@@ -1,6 +1,6 @@
 [package]
 name = "tomegane"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "The remote-seeing eye for AI agents — extract smart frames from screen recordings"
 license = "MIT"

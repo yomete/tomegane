@@ -76,3 +76,78 @@ pub fn extract_frames(
 
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_ffmpeg_succeeds_when_installed() {
+        assert!(check_ffmpeg().is_ok());
+    }
+
+    #[test]
+    fn get_duration_returns_positive_value() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/test_video.mp4");
+        let duration = get_duration(&fixture).unwrap();
+        assert!(duration > 0.0, "Duration should be positive, got {duration}");
+        assert!(
+            (duration - 5.0).abs() < 0.5,
+            "Expected ~5s duration, got {duration}"
+        );
+    }
+
+    #[test]
+    fn get_duration_fails_for_missing_file() {
+        let result = get_duration(Path::new("/nonexistent/video.mp4"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_frames_produces_files() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/test_video.mp4");
+        let tmp = tempfile::tempdir().unwrap();
+
+        let count = extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
+        assert!(count > 0, "Should extract at least one frame");
+        assert_eq!(count, 5, "5-second video at 1fps should produce 5 frames");
+
+        // Verify actual files exist
+        let png_files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "png"))
+            .collect();
+        assert_eq!(png_files.len(), 5);
+    }
+
+    #[test]
+    fn extract_frames_respects_interval() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/test_video.mp4");
+        let tmp = tempfile::tempdir().unwrap();
+
+        let count = extract_frames(&fixture, tmp.path(), 2.0, "png").unwrap();
+        // 5-second video at 0.5fps → expect 2-3 frames
+        assert!(count >= 2 && count <= 3, "Expected 2-3 frames at 2s interval, got {count}");
+    }
+
+    #[test]
+    fn extract_frames_supports_jpg() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/test_video.mp4");
+        let tmp = tempfile::tempdir().unwrap();
+
+        let count = extract_frames(&fixture, tmp.path(), 2.5, "jpg").unwrap();
+        assert!(count > 0);
+
+        let jpg_files: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "jpg"))
+            .collect();
+        assert_eq!(jpg_files.len(), count);
+    }
+}

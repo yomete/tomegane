@@ -45,5 +45,12 @@ fn main() {
                 }
             }
         }
+
+        Commands::Mcp => {
+            if let Err(e) = tomegane::mcp::run_server() {
+                eprintln!("MCP server error: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 }

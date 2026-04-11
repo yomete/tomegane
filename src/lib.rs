@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod extract;
+pub mod mcp;
 pub mod output;
 
 use std::path::{Path, PathBuf};

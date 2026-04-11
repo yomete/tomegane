@@ -46,4 +46,7 @@ pub enum Commands {
         #[arg(long)]
         output: Option<String>,
     },
+
+    /// Start the MCP server (JSON-RPC over stdin/stdout)
+    Mcp,
 }

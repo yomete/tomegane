@@ -11,75 +11,59 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use extract::{diff, ffmpeg};
 use output::schema::{AnalysisResult, Frame};
 
+#[derive(Debug, Clone)]
+pub struct AnalyzeOptions<'a> {
+    pub interval: f64,
+    pub output_dir: Option<&'a str>,
+    pub format: &'a str,
+    pub include_base64: bool,
+    pub crop: Option<ffmpeg::CropRect>,
+    pub threshold: Option<f64>,
+    pub max_frames: Option<usize>,
+}
+
+impl Default for AnalyzeOptions<'_> {
+    fn default() -> Self {
+        Self {
+            interval: 1.0,
+            output_dir: None,
+            format: "png",
+            include_base64: false,
+            crop: None,
+            threshold: None,
+            max_frames: None,
+        }
+    }
+}
+
 /// Analyze a video file: extract frames and return structured results.
 ///
 /// If `threshold` is provided, uses perceptual hashing to select only
 /// frames with meaningful visual changes. Otherwise returns all frames.
-pub fn analyze(
-    video_path: &str,
-    interval: f64,
-    output_dir: Option<&str>,
-    format: &str,
-    include_base64: bool,
-    crop: Option<ffmpeg::CropRect>,
-    threshold: Option<f64>,
-    max_frames: Option<usize>,
-) -> Result<AnalysisResult, String> {
-    analyze_internal(
-        video_path,
-        interval,
-        output_dir,
-        format,
-        include_base64,
-        crop,
-        threshold,
-        max_frames,
-        None,
-    )
+pub fn analyze(video_path: &str, options: &AnalyzeOptions<'_>) -> Result<AnalysisResult, String> {
+    analyze_internal(video_path, options, None)
 }
 
 pub fn analyze_stream<F>(
     video_path: &str,
-    interval: f64,
-    output_dir: Option<&str>,
-    format: &str,
-    include_base64: bool,
-    crop: Option<ffmpeg::CropRect>,
-    threshold: Option<f64>,
-    max_frames: Option<usize>,
+    options: &AnalyzeOptions<'_>,
     mut on_frame: F,
 ) -> Result<AnalysisResult, String>
 where
     F: FnMut(&Frame) -> Result<(), String>,
 {
-    if max_frames.is_some() {
+    if options.max_frames.is_some() {
         return Err("Streaming mode does not support max_frames yet".to_string());
     }
 
-    analyze_internal(
-        video_path,
-        interval,
-        output_dir,
-        format,
-        include_base64,
-        crop,
-        threshold,
-        max_frames,
-        Some(&mut on_frame),
-    )
+    analyze_internal(video_path, options, Some(&mut on_frame))
 }
 
 type FrameCallback<'a> = dyn FnMut(&Frame) -> Result<(), String> + 'a;
 
 fn analyze_internal(
     video_path: &str,
-    interval: f64,
-    output_dir: Option<&str>,
-    format: &str,
-    include_base64: bool,
-    crop: Option<ffmpeg::CropRect>,
-    threshold: Option<f64>,
-    max_frames: Option<usize>,
+    options: &AnalyzeOptions<'_>,
     mut on_frame: Option<&mut FrameCallback<'_>>,
 ) -> Result<AnalysisResult, String> {
     let video = Path::new(video_path);
@@ -88,11 +72,14 @@ fn analyze_internal(
     }
 
     let valid_formats = ["png", "jpg"];
-    if !valid_formats.contains(&format) {
-        return Err(format!("Unsupported format '{format}'. Use: png, jpg"));
+    if !valid_formats.contains(&options.format) {
+        return Err(format!(
+            "Unsupported format '{}'. Use: png, jpg",
+            options.format
+        ));
     }
 
-    if let Some(t) = threshold
+    if let Some(t) = options.threshold
         && !(0.0..=1.0).contains(&t)
     {
         return Err(format!("Threshold must be between 0.0 and 1.0, got {t}"));
@@ -103,7 +90,7 @@ fn analyze_internal(
     let duration = ffmpeg::get_duration(video)?;
 
     let temp_dir;
-    let frames_dir: PathBuf = if let Some(dir) = output_dir {
+    let frames_dir: PathBuf = if let Some(dir) = options.output_dir {
         let p = PathBuf::from(dir);
         std::fs::create_dir_all(&p).map_err(|e| format!("Failed to create output dir: {e}"))?;
         p
@@ -112,7 +99,13 @@ fn analyze_internal(
         temp_dir.path().to_path_buf()
     };
 
-    let total_extracted = ffmpeg::extract_frames(video, &frames_dir, interval, format, crop)?;
+    let total_extracted = ffmpeg::extract_frames(
+        video,
+        &frames_dir,
+        options.interval,
+        options.format,
+        options.crop,
+    )?;
 
     if total_extracted == 0 {
         return Err("No frames were extracted. Is the video file valid?".to_string());
@@ -123,27 +116,27 @@ fn analyze_internal(
         .map_err(|e| format!("Failed to read frames dir: {e}"))?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|ext| ext == format))
+        .filter(|p| p.extension().is_some_and(|ext| ext == options.format))
         .collect();
     all_paths.sort();
 
     let mut frames: Vec<Frame> = Vec::new();
 
-    if on_frame.is_some() && max_frames.is_none() {
+    if on_frame.is_some() && options.max_frames.is_none() {
         stream_selected_frames(
             &all_paths,
-            interval,
-            include_base64,
-            threshold,
+            options.interval,
+            options.include_base64,
+            options.threshold,
             &mut frames,
             &mut on_frame,
         )?;
     } else {
-        let selected: Vec<(usize, f64)> = if let Some(t) = threshold {
-            diff::select_key_frames(&all_paths, t, max_frames)?
+        let selected: Vec<(usize, f64)> = if let Some(t) = options.threshold {
+            diff::select_key_frames(&all_paths, t, options.max_frames)?
         } else {
             let mut all: Vec<(usize, f64)> = (0..all_paths.len()).map(|i| (i, 0.0)).collect();
-            if let Some(max) = max_frames
+            if let Some(max) = options.max_frames
                 && all.len() > max
             {
                 let step = all.len() as f64 / max as f64;
@@ -158,7 +151,13 @@ fn analyze_internal(
         };
 
         for &(idx, score) in &selected {
-            let frame = build_frame(&all_paths[idx], idx, interval, include_base64, score)?;
+            let frame = build_frame(
+                &all_paths[idx],
+                idx,
+                options.interval,
+                options.include_base64,
+                score,
+            )?;
             if let Some(callback) = on_frame.as_deref_mut() {
                 callback(&frame)?;
             }
@@ -174,7 +173,7 @@ fn analyze_internal(
         total_frames_extracted: total_extracted,
         key_frames: frames,
         frame_count,
-        output_format: format.to_string(),
+        output_format: options.format.to_string(),
     })
 }
 

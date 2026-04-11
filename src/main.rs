@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use clap::Parser;
 
+use tomegane::AnalyzeOptions;
 use tomegane::cli::{Cli, Commands};
 use tomegane::extract::ffmpeg::CropRect;
 use tomegane::output::schema::StreamEvent;
@@ -50,6 +51,15 @@ fn main() {
             };
 
             let start = Instant::now();
+            let options = AnalyzeOptions {
+                interval,
+                output_dir: output_dir.as_deref(),
+                format: &format,
+                include_base64: base64,
+                crop,
+                threshold,
+                max_frames,
+            };
 
             let result = if stream {
                 if output.is_some() {
@@ -67,13 +77,12 @@ fn main() {
 
                     let summary = tomegane::analyze(
                         &video_path,
-                        interval,
-                        output_dir.as_deref(),
-                        &format,
-                        false,
-                        crop,
-                        None,
-                        Some(1),
+                        &AnalyzeOptions {
+                            include_base64: false,
+                            threshold: None,
+                            max_frames: Some(1),
+                            ..options.clone()
+                        },
                     )?;
 
                     emit_event(&StreamEvent::Started {
@@ -83,21 +92,11 @@ fn main() {
                         output_format: summary.output_format.clone(),
                     })?;
 
-                    let analysis = tomegane::analyze_stream(
-                        &video_path,
-                        interval,
-                        output_dir.as_deref(),
-                        &format,
-                        base64,
-                        crop,
-                        threshold,
-                        max_frames,
-                        |frame| {
-                            emit_event(&StreamEvent::Frame {
-                                frame: frame.clone(),
-                            })
-                        },
-                    )?;
+                    let analysis = tomegane::analyze_stream(&video_path, &options, |frame| {
+                        emit_event(&StreamEvent::Frame {
+                            frame: frame.clone(),
+                        })
+                    })?;
 
                     emit_event(&StreamEvent::Completed {
                         result: analysis.clone(),
@@ -106,16 +105,7 @@ fn main() {
                     Ok(analysis)
                 })()
             } else {
-                tomegane::analyze(
-                    &video_path,
-                    interval,
-                    output_dir.as_deref(),
-                    &format,
-                    base64,
-                    crop,
-                    threshold,
-                    max_frames,
-                )
+                tomegane::analyze(&video_path, &options)
             };
 
             match result {

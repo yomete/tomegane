@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 use super::protocol::{ContentBlock, Tool, ToolResult};
+use crate::AnalyzeOptions;
 use crate::extract::ffmpeg::{self, CropRect};
 
 pub fn tool_definitions() -> Vec<Tool> {
@@ -126,16 +127,17 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
         Err(e) => return error_result(&e),
     };
 
-    match crate::analyze(
-        video_path,
+    let options = AnalyzeOptions {
         interval,
-        None,
-        "png",
-        true, // always include base64 for MCP
+        output_dir: None,
+        format: "png",
+        include_base64: true,
         crop,
-        Some(threshold),
-        Some(max_frames),
-    ) {
+        threshold: Some(threshold),
+        max_frames: Some(max_frames),
+    };
+
+    match crate::analyze(video_path, &options) {
         Ok(result) => {
             let mut content: Vec<ContentBlock> = Vec::new();
 

@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use tomegane::AnalyzeOptions;
+
 /// Helper: path to the test fixture video.
 fn fixture_video() -> String {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -9,12 +11,15 @@ fn fixture_video() -> String {
         .to_string()
 }
 
+fn options() -> AnalyzeOptions<'static> {
+    AnalyzeOptions::default()
+}
+
 // ─── analyze() function tests ───
 
 #[test]
 fn analyze_returns_correct_frame_count() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let result = tomegane::analyze(&fixture_video(), &options()).unwrap();
     assert_eq!(result.frame_count, 5);
     assert_eq!(result.key_frames.len(), 5);
     assert_eq!(result.output_format, "png");
@@ -22,8 +27,7 @@ fn analyze_returns_correct_frame_count() {
 
 #[test]
 fn analyze_first_frame_is_initial_state() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let result = tomegane::analyze(&fixture_video(), &options()).unwrap();
     let first = &result.key_frames[0];
     assert_eq!(first.index, 0);
     assert_eq!(first.timestamp_seconds, 0.0);
@@ -33,8 +37,7 @@ fn analyze_first_frame_is_initial_state() {
 
 #[test]
 fn analyze_timestamps_are_sequential() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let result = tomegane::analyze(&fixture_video(), &options()).unwrap();
     for (i, frame) in result.key_frames.iter().enumerate() {
         let expected = i as f64 * 1.0;
         assert!(
@@ -47,8 +50,14 @@ fn analyze_timestamps_are_sequential() {
 
 #[test]
 fn analyze_with_base64_includes_data() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", true, None, None, None).unwrap();
+    let result = tomegane::analyze(
+        &fixture_video(),
+        &AnalyzeOptions {
+            include_base64: true,
+            ..options()
+        },
+    )
+    .unwrap();
     for frame in &result.key_frames {
         assert!(
             frame.image_base64.is_some(),
@@ -67,8 +76,7 @@ fn analyze_with_base64_includes_data() {
 
 #[test]
 fn analyze_without_base64_omits_data() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let result = tomegane::analyze(&fixture_video(), &options()).unwrap();
     for frame in &result.key_frames {
         assert!(frame.image_base64.is_none());
     }
@@ -81,13 +89,10 @@ fn analyze_with_output_dir_persists_frames() {
 
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        Some(&dir),
-        "png",
-        false,
-        None,
-        None,
-        None,
+        &AnalyzeOptions {
+            output_dir: Some(&dir),
+            ..options()
+        },
     )
     .unwrap();
 
@@ -107,8 +112,7 @@ fn analyze_with_output_dir_persists_frames() {
 
 #[test]
 fn analyze_duration_is_reasonable() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let result = tomegane::analyze(&fixture_video(), &options()).unwrap();
     assert!(
         (result.duration_seconds - 5.0).abs() < 0.5,
         "Expected ~5s duration, got {}",
@@ -119,39 +123,41 @@ fn analyze_duration_is_reasonable() {
 #[test]
 fn analyze_source_matches_input() {
     let video = fixture_video();
-    let result = tomegane::analyze(&video, 1.0, None, "png", false, None, None, None).unwrap();
+    let result = tomegane::analyze(&video, &options()).unwrap();
     assert_eq!(result.source, video);
 }
 
 #[test]
 fn analyze_rejects_missing_video() {
-    let result = tomegane::analyze(
-        "/nonexistent/video.mp4",
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        None,
-        None,
-    );
+    let result = tomegane::analyze("/nonexistent/video.mp4", &options());
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
 
 #[test]
 fn analyze_rejects_invalid_format() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "bmp", false, None, None, None);
+    let result = tomegane::analyze(
+        &fixture_video(),
+        &AnalyzeOptions {
+            format: "bmp",
+            ..options()
+        },
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Unsupported format"));
 }
 
 #[test]
 fn analyze_with_smaller_interval_extracts_more_frames() {
-    let result_1s =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
-    let result_half =
-        tomegane::analyze(&fixture_video(), 0.5, None, "png", false, None, None, None).unwrap();
+    let result_1s = tomegane::analyze(&fixture_video(), &options()).unwrap();
+    let result_half = tomegane::analyze(
+        &fixture_video(),
+        &AnalyzeOptions {
+            interval: 0.5,
+            ..options()
+        },
+    )
+    .unwrap();
 
     assert!(
         result_half.frame_count > result_1s.frame_count,
@@ -166,18 +172,14 @@ fn analyze_with_smaller_interval_extracts_more_frames() {
 #[test]
 fn analyze_with_threshold_reduces_frames() {
     // Without threshold: all 5 frames
-    let all =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let all = tomegane::analyze(&fixture_video(), &options()).unwrap();
     // With threshold: should be fewer (or equal for low-change test video)
     let smart = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(0.1),
-        None,
+        &AnalyzeOptions {
+            threshold: Some(0.1),
+            ..options()
+        },
     )
     .unwrap();
 
@@ -197,13 +199,10 @@ fn analyze_with_high_threshold_keeps_only_first() {
     // Threshold of 1.0 means only completely different frames pass
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(1.0),
-        None,
+        &AnalyzeOptions {
+            threshold: Some(1.0),
+            ..options()
+        },
     )
     .unwrap();
     assert_eq!(
@@ -217,13 +216,10 @@ fn analyze_with_high_threshold_keeps_only_first() {
 fn analyze_with_zero_threshold_keeps_all_changed() {
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(0.0),
-        None,
+        &AnalyzeOptions {
+            threshold: Some(0.0),
+            ..options()
+        },
     )
     .unwrap();
     // With threshold 0.0, any non-zero change passes — includes all frames
@@ -235,13 +231,10 @@ fn analyze_with_zero_threshold_keeps_all_changed() {
 fn analyze_max_frames_caps_output() {
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        None,
-        Some(3),
+        &AnalyzeOptions {
+            max_frames: Some(3),
+            ..options()
+        },
     )
     .unwrap();
     assert!(
@@ -255,13 +248,11 @@ fn analyze_max_frames_caps_output() {
 fn analyze_max_frames_with_threshold() {
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(0.0),
-        Some(2),
+        &AnalyzeOptions {
+            threshold: Some(0.0),
+            max_frames: Some(2),
+            ..options()
+        },
     )
     .unwrap();
     assert!(
@@ -277,13 +268,10 @@ fn analyze_max_frames_with_threshold() {
 fn analyze_threshold_produces_change_scores() {
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(0.0),
-        None,
+        &AnalyzeOptions {
+            threshold: Some(0.0),
+            ..options()
+        },
     )
     .unwrap();
 
@@ -302,17 +290,13 @@ fn analyze_threshold_produces_change_scores() {
 
 #[test]
 fn analyze_total_extracted_stays_same_with_threshold() {
-    let all =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let all = tomegane::analyze(&fixture_video(), &options()).unwrap();
     let smart = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(0.5),
-        None,
+        &AnalyzeOptions {
+            threshold: Some(0.5),
+            ..options()
+        },
     )
     .unwrap();
 
@@ -326,13 +310,10 @@ fn analyze_total_extracted_stays_same_with_threshold() {
 fn analyze_rejects_invalid_threshold() {
     let result = tomegane::analyze(
         &fixture_video(),
-        1.0,
-        None,
-        "png",
-        false,
-        None,
-        Some(1.5),
-        None,
+        &AnalyzeOptions {
+            threshold: Some(1.5),
+            ..options()
+        },
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Threshold"));

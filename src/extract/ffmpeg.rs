@@ -236,7 +236,7 @@ mod tests {
         let count = extract_frames(&fixture, tmp.path(), 2.0, "png", None).unwrap();
         // 5-second video at 0.5fps → expect 2-3 frames
         assert!(
-            count >= 2 && count <= 3,
+            (2..=3).contains(&count),
             "Expected 2-3 frames at 2s interval, got {count}"
         );
     }

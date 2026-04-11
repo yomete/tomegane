@@ -1,0 +1,189 @@
+# tomegane
+
+> The remote-seeing eye for AI agents — extract smart frames from screen recordings.
+
+**Video in → smart frames + metadata out. Model-agnostic. Single Rust binary.**
+
+tomegane lets AI agents "watch" screen recordings by extracting only the frames that matter. It uses perceptual hashing to detect meaningful UI state changes, so a 30-second recording becomes 5-10 key frames instead of 30+ near-identical ones.
+
+```
+screen-recording.mp4 → tomegane → [key frames + timestamps + metadata] → AI agent reasons about it
+```
+
+## Why?
+
+AI agents can't watch videos. When a user says "here's a recording of the bug", the agent is blind. tomegane bridges this gap — it extracts the visually significant moments and hands them to the agent as images with context.
+
+- **Model-agnostic** — tomegane doesn't call any LLM. It extracts frames; your agent does the reasoning.
+- **MCP-native** — works as a tool in Claude Code, Cursor, or any MCP client.
+- **Smart diffing** — perceptual hashing means you get the frames that matter, not every frame.
+- **Single binary** — `cargo install` and you're done.
+
+## Requirements
+
+- **ffmpeg** — must be installed and on your PATH.
+  - macOS: `brew install ffmpeg`
+  - Ubuntu: `sudo apt install ffmpeg`
+  - Windows: [ffmpeg.org/download](https://ffmpeg.org/download.html)
+
+## Installation
+
+### From source
+
+```bash
+git clone https://github.com/yomete/tomegane.git
+cd tomegane
+cargo install --path .
+```
+
+### From crates.io (coming soon)
+
+```bash
+cargo install tomegane
+```
+
+## CLI Usage
+
+### Analyze a video
+
+```bash
+# Basic — extract frames at 1fps, output JSON to stdout
+tomegane analyze recording.mov
+
+# Smart frame selection — only keep frames with meaningful changes
+tomegane analyze recording.mov --threshold 0.15
+
+# Full control
+tomegane analyze recording.mov \
+  --interval 0.5 \
+  --threshold 0.15 \
+  --max-frames 20 \
+  --output-dir ./frames \
+  --output result.json \
+  --base64
+```
+
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--interval` | `1.0` | Frame extraction interval in seconds |
+| `--threshold` | *(off)* | Change threshold for smart frame selection (0.0–1.0) |
+| `--max-frames` | *(no limit)* | Maximum number of key frames to return |
+| `--output-dir` | *(temp dir)* | Directory to save extracted frames |
+| `--format` | `png` | Image format (`png` or `jpg`) |
+| `--base64` | `false` | Include base64-encoded image data in JSON |
+| `--output` | *(stdout)* | Write JSON to a file instead of stdout |
+
+### Output
+
+```json
+{
+  "source": "recording.mov",
+  "duration_seconds": 33.4,
+  "total_frames_extracted": 67,
+  "key_frames": [
+    {
+      "index": 0,
+      "timestamp_seconds": 0.0,
+      "image_path": "/tmp/tomegane/frame_0001.png",
+      "change_score": 0.0,
+      "description": "initial_state"
+    },
+    {
+      "index": 12,
+      "timestamp_seconds": 6.0,
+      "image_path": "/tmp/tomegane/frame_0013.png",
+      "change_score": 0.453,
+      "description": "major_change"
+    }
+  ],
+  "frame_count": 8,
+  "output_format": "png"
+}
+```
+
+## MCP Server
+
+tomegane runs as an MCP server over stdin/stdout. Any MCP-compatible client can use it.
+
+### Setup with Claude Code
+
+Add to your Claude Code config (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "tomegane": {
+      "command": "tomegane",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+If you built from source and haven't installed globally:
+
+```json
+{
+  "mcpServers": {
+    "tomegane": {
+      "command": "/path/to/tomegane/target/release/tomegane",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### MCP Tools
+
+#### `analyze_video`
+
+Extract key frames from a screen recording.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `video_path` | string | yes | — | Absolute path to the video file |
+| `threshold` | number | no | `0.15` | Change threshold (0.0–1.0) |
+| `max_frames` | integer | no | `20` | Max frames to return |
+| `interval` | number | no | `0.5` | Extraction interval in seconds |
+
+Returns a summary text block followed by alternating text annotations and image content blocks for each key frame.
+
+#### `get_frame`
+
+Extract a single frame at a specific timestamp.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `video_path` | string | yes | Absolute path to the video file |
+| `timestamp_seconds` | number | yes | Timestamp to extract |
+
+Returns the frame as an MCP image content block.
+
+#### `compare_frames`
+
+Compare two frames at different timestamps with a perceptual similarity score.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `video_path` | string | yes | Absolute path to the video file |
+| `timestamp_a` | number | yes | First timestamp |
+| `timestamp_b` | number | yes | Second timestamp |
+
+Returns both frames with a change score (0.0 = identical, 1.0 = completely different).
+
+## How it works
+
+1. **Frame extraction** — shells out to `ffmpeg` to extract frames at the configured interval
+2. **Perceptual hashing** — computes an 8×8 grayscale mean hash (pHash) for each frame
+3. **Smart selection** — compares consecutive frame hashes via hamming distance; only keeps frames where the change exceeds the threshold
+4. **Output** — returns structured JSON (CLI) or MCP image content blocks (MCP server)
+
+## Name
+
+*Tomegane* (遠眼) comes from the **Tōmegane no Jutsu** (遠眼の術) — the Third Hokage's Crystal Ball Jutsu from Naruto. It lets you see what's happening remotely. That's exactly what this tool does for AI agents.
+
+## License
+
+MIT

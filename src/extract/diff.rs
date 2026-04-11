@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use image::imageops::FilterType;
+use rayon::prelude::*;
 
 /// A perceptual hash — 64-bit fingerprint of an image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,7 +59,7 @@ pub fn change_score(a: PHash, b: PHash) -> f64 {
 /// The first frame is always included. Subsequent frames are included only if
 /// their change_score relative to the last *included* frame exceeds the threshold.
 pub fn select_key_frames(
-    frame_paths: &[impl AsRef<Path>],
+    frame_paths: &[impl AsRef<Path> + Sync],
     threshold: f64,
     max_frames: Option<usize>,
 ) -> Result<Vec<(usize, f64)>, String> {
@@ -66,12 +67,17 @@ pub fn select_key_frames(
         return Ok(vec![]);
     }
 
-    // Always include the first frame
-    let mut selected: Vec<(usize, f64)> = vec![(0, 0.0)];
-    let mut last_hash = phash(frame_paths[0].as_ref())?;
+    // Compute all hashes in parallel using rayon
+    let hashes: Vec<PHash> = frame_paths
+        .par_iter()
+        .map(|path| phash(path.as_ref()))
+        .collect::<Result<Vec<_>, _>>()?;
 
-    for (i, path) in frame_paths.iter().enumerate().skip(1) {
-        let current_hash = phash(path.as_ref())?;
+    // Sequential selection: compare against last *included* frame
+    let mut selected: Vec<(usize, f64)> = vec![(0, 0.0)];
+    let mut last_hash = hashes[0];
+
+    for (i, &current_hash) in hashes.iter().enumerate().skip(1) {
         let score = change_score(last_hash, current_hash);
 
         if score >= threshold {
@@ -81,19 +87,19 @@ pub fn select_key_frames(
     }
 
     // If max_frames is set and we have too many, keep the most significant changes
-    if let Some(max) = max_frames {
-        if selected.len() > max {
-            // Always keep the first frame
-            let first = selected[0];
-            let mut rest: Vec<(usize, f64)> = selected[1..].to_vec();
-            // Sort by change_score descending — keep the biggest changes
-            rest.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-            rest.truncate(max - 1);
-            // Re-sort by index to maintain chronological order
-            rest.push(first);
-            rest.sort_by_key(|&(idx, _)| idx);
-            selected = rest;
-        }
+    if let Some(max) = max_frames
+        && selected.len() > max
+    {
+        // Always keep the first frame
+        let first = selected[0];
+        let mut rest: Vec<(usize, f64)> = selected[1..].to_vec();
+        // Sort by change_score descending — keep the biggest changes
+        rest.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        rest.truncate(max - 1);
+        // Re-sort by index to maintain chronological order
+        rest.push(first);
+        rest.sort_by_key(|&(idx, _)| idx);
+        selected = rest;
     }
 
     Ok(selected)

@@ -34,10 +34,10 @@ pub fn analyze(
         return Err(format!("Unsupported format '{format}'. Use: png, jpg"));
     }
 
-    if let Some(t) = threshold {
-        if !(0.0..=1.0).contains(&t) {
-            return Err(format!("Threshold must be between 0.0 and 1.0, got {t}"));
-        }
+    if let Some(t) = threshold
+        && !(0.0..=1.0).contains(&t)
+    {
+        return Err(format!("Threshold must be between 0.0 and 1.0, got {t}"));
     }
 
     ffmpeg::check_ffmpeg()?;
@@ -77,17 +77,17 @@ pub fn analyze(
     } else {
         // No threshold — include all frames (but still respect max_frames)
         let mut all: Vec<(usize, f64)> = (0..all_paths.len()).map(|i| (i, 0.0)).collect();
-        if let Some(max) = max_frames {
-            if all.len() > max {
-                // Evenly sample frames
-                let step = all.len() as f64 / max as f64;
-                all = (0..max)
-                    .map(|i| {
-                        let idx = (i as f64 * step) as usize;
-                        (idx, 0.0)
-                    })
-                    .collect();
-            }
+        if let Some(max) = max_frames
+            && all.len() > max
+        {
+            // Evenly sample frames
+            let step = all.len() as f64 / max as f64;
+            all = (0..max)
+                .map(|i| {
+                    let idx = (i as f64 * step) as usize;
+                    (idx, 0.0)
+                })
+                .collect();
         }
         all
     };

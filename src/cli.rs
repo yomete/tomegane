@@ -45,6 +45,10 @@ pub enum Commands {
         /// Write JSON output to a file instead of stdout
         #[arg(long)]
         output: Option<String>,
+
+        /// Print progress and debug info to stderr
+        #[arg(short, long, default_value_t = false)]
+        verbose: bool,
     },
 
     /// Start the MCP server (JSON-RPC over stdin/stdout)

@@ -66,16 +66,14 @@ mod tests {
             source: "test.mp4".to_string(),
             duration_seconds: 5.0,
             total_frames_extracted: 5,
-            key_frames: vec![
-                Frame {
-                    index: 0,
-                    timestamp_seconds: 0.0,
-                    image_path: "/tmp/f1.png".to_string(),
-                    image_base64: None,
-                    change_score: 0.0,
-                    description: "initial_state".to_string(),
-                },
-            ],
+            key_frames: vec![Frame {
+                index: 0,
+                timestamp_seconds: 0.0,
+                image_path: "/tmp/f1.png".to_string(),
+                image_base64: None,
+                change_score: 0.0,
+                description: "initial_state".to_string(),
+            }],
             frame_count: 1,
             output_format: "png".to_string(),
         };

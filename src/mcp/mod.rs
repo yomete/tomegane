@@ -5,7 +5,10 @@ use std::io::{BufRead, Write};
 
 use serde_json::Value;
 
-use protocol::{InitializeResult, JsonRpcRequest, JsonRpcResponse, ServerCapabilities, ServerInfo, ToolCallParams, ToolsCapability, ToolsListResult};
+use protocol::{
+    InitializeResult, JsonRpcRequest, JsonRpcResponse, ServerCapabilities, ServerInfo,
+    ToolCallParams, ToolsCapability, ToolsListResult,
+};
 
 /// Run the MCP server over stdin/stdout.
 ///
@@ -29,11 +32,7 @@ pub fn run_server() -> Result<(), String> {
         let request: JsonRpcRequest = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
-                let response = JsonRpcResponse::error(
-                    None,
-                    -32700,
-                    format!("Parse error: {e}"),
-                );
+                let response = JsonRpcResponse::error(None, -32700, format!("Parse error: {e}"));
                 write_response(&mut stdout, &response)?;
                 continue;
             }
@@ -57,9 +56,9 @@ pub fn run_server() -> Result<(), String> {
 fn write_response(stdout: &mut impl Write, response: &JsonRpcResponse) -> Result<(), String> {
     let json = serde_json::to_string(response)
         .map_err(|e| format!("Failed to serialize response: {e}"))?;
-    writeln!(stdout, "{json}")
-        .map_err(|e| format!("Failed to write to stdout: {e}"))?;
-    stdout.flush()
+    writeln!(stdout, "{json}").map_err(|e| format!("Failed to write to stdout: {e}"))?;
+    stdout
+        .flush()
         .map_err(|e| format!("Failed to flush stdout: {e}"))?;
     Ok(())
 }
@@ -121,7 +120,9 @@ fn handle_request(request: &JsonRpcRequest) -> Option<JsonRpcResponse> {
                 }
             };
 
-            let arguments = params.arguments.unwrap_or(Value::Object(Default::default()));
+            let arguments = params
+                .arguments
+                .unwrap_or(Value::Object(Default::default()));
             let result = handlers::handle_tool_call(&params.name, &arguments);
 
             Some(JsonRpcResponse::success(
@@ -226,8 +227,8 @@ mod tests {
 
     #[test]
     fn handle_tools_call_analyze_with_fixture() {
-        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -254,8 +255,8 @@ mod tests {
 
     #[test]
     fn handle_get_frame_with_fixture() {
-        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
 
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),

@@ -111,8 +111,7 @@ mod tests {
 
     #[test]
     fn identical_images_have_zero_distance() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
 
         // Extract two copies of the same frame
         let tmp = tempfile::tempdir().unwrap();
@@ -151,8 +150,7 @@ mod tests {
 
     #[test]
     fn select_key_frames_always_includes_first() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
         crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
 
@@ -171,8 +169,7 @@ mod tests {
 
     #[test]
     fn high_threshold_selects_fewer_frames() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
         crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
 
@@ -197,8 +194,7 @@ mod tests {
 
     #[test]
     fn max_frames_caps_output() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
         crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
 

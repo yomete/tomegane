@@ -7,16 +7,21 @@ pub fn check_ffmpeg() -> Result<(), String> {
         .arg("-version")
         .output()
         .map(|_| ())
-        .map_err(|_| "ffmpeg not found. Please install ffmpeg: https://ffmpeg.org/download.html".to_string())
+        .map_err(|_| {
+            "ffmpeg not found. Please install ffmpeg: https://ffmpeg.org/download.html".to_string()
+        })
 }
 
 /// Get the duration of a video file in seconds.
 pub fn get_duration(video_path: &Path) -> Result<f64, String> {
     let output = Command::new("ffprobe")
         .args([
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
         ])
         .arg(video_path)
         .output()
@@ -67,11 +72,7 @@ pub fn extract_frames(
     let count = std::fs::read_dir(output_dir)
         .map_err(|e| format!("Failed to read output dir: {e}"))?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .is_some_and(|ext| ext == format)
-        })
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == format))
         .count();
 
     Ok(count)
@@ -88,10 +89,12 @@ mod tests {
 
     #[test]
     fn get_duration_returns_positive_value() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let duration = get_duration(&fixture).unwrap();
-        assert!(duration > 0.0, "Duration should be positive, got {duration}");
+        assert!(
+            duration > 0.0,
+            "Duration should be positive, got {duration}"
+        );
         assert!(
             (duration - 5.0).abs() < 0.5,
             "Expected ~5s duration, got {duration}"
@@ -106,8 +109,7 @@ mod tests {
 
     #[test]
     fn extract_frames_produces_files() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
 
         let count = extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
@@ -125,19 +127,20 @@ mod tests {
 
     #[test]
     fn extract_frames_respects_interval() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
 
         let count = extract_frames(&fixture, tmp.path(), 2.0, "png").unwrap();
         // 5-second video at 0.5fps → expect 2-3 frames
-        assert!(count >= 2 && count <= 3, "Expected 2-3 frames at 2s interval, got {count}");
+        assert!(
+            count >= 2 && count <= 3,
+            "Expected 2-3 frames at 2s interval, got {count}"
+        );
     }
 
     #[test]
     fn extract_frames_supports_jpg() {
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/test_video.mp4");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
 
         let count = extract_frames(&fixture, tmp.path(), 2.5, "jpg").unwrap();

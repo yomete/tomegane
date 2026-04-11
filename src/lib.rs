@@ -47,12 +47,10 @@ pub fn analyze(
     let temp_dir;
     let frames_dir: PathBuf = if let Some(dir) = output_dir {
         let p = PathBuf::from(dir);
-        std::fs::create_dir_all(&p)
-            .map_err(|e| format!("Failed to create output dir: {e}"))?;
+        std::fs::create_dir_all(&p).map_err(|e| format!("Failed to create output dir: {e}"))?;
         p
     } else {
-        temp_dir = tempfile::tempdir()
-            .map_err(|e| format!("Failed to create temp dir: {e}"))?;
+        temp_dir = tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {e}"))?;
         temp_dir.path().to_path_buf()
     };
 

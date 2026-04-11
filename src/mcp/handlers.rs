@@ -108,10 +108,7 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
         .get("max_frames")
         .and_then(|v| v.as_u64())
         .unwrap_or(20) as usize;
-    let interval = args
-        .get("interval")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.5);
+    let interval = args.get("interval").and_then(|v| v.as_f64()).unwrap_or(0.5);
 
     match crate::analyze(
         video_path,
@@ -143,10 +140,7 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
                 content.push(ContentBlock::Text {
                     text: format!(
                         "\n--- Frame {} at {:.1}s (change: {:.3}, {}) ---",
-                        frame.index,
-                        frame.timestamp_seconds,
-                        frame.change_score,
-                        frame.description,
+                        frame.index, frame.timestamp_seconds, frame.change_score, frame.description,
                     ),
                 });
 
@@ -205,26 +199,24 @@ fn handle_get_frame(args: &Value) -> ToolResult {
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            match std::fs::read(&output_path) {
-                Ok(data) => {
-                    let b64 = BASE64.encode(&data);
-                    ToolResult {
-                        content: vec![
-                            ContentBlock::Text {
-                                text: format!("Frame at {timestamp:.1}s from {video_path}"),
-                            },
-                            ContentBlock::Image {
-                                data: b64,
-                                mime_type: "image/png".to_string(),
-                            },
-                        ],
-                        is_error: None,
-                    }
+        Ok(o) if o.status.success() => match std::fs::read(&output_path) {
+            Ok(data) => {
+                let b64 = BASE64.encode(&data);
+                ToolResult {
+                    content: vec![
+                        ContentBlock::Text {
+                            text: format!("Frame at {timestamp:.1}s from {video_path}"),
+                        },
+                        ContentBlock::Image {
+                            data: b64,
+                            mime_type: "image/png".to_string(),
+                        },
+                    ],
+                    is_error: None,
                 }
-                Err(e) => error_result(&format!("Failed to read frame: {e}")),
             }
-        }
+            Err(e) => error_result(&format!("Failed to read frame: {e}")),
+        },
         Ok(o) => {
             let stderr = String::from_utf8_lossy(&o.stderr);
             error_result(&format!("ffmpeg failed: {stderr}"))

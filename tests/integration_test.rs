@@ -13,7 +13,8 @@ fn fixture_video() -> String {
 
 #[test]
 fn analyze_returns_correct_frame_count() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+    let result =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     assert_eq!(result.frame_count, 5);
     assert_eq!(result.key_frames.len(), 5);
     assert_eq!(result.output_format, "png");
@@ -21,7 +22,8 @@ fn analyze_returns_correct_frame_count() {
 
 #[test]
 fn analyze_first_frame_is_initial_state() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+    let result =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     let first = &result.key_frames[0];
     assert_eq!(first.index, 0);
     assert_eq!(first.timestamp_seconds, 0.0);
@@ -31,7 +33,8 @@ fn analyze_first_frame_is_initial_state() {
 
 #[test]
 fn analyze_timestamps_are_sequential() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+    let result =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     for (i, frame) in result.key_frames.iter().enumerate() {
         let expected = i as f64 * 1.0;
         assert!(
@@ -44,7 +47,8 @@ fn analyze_timestamps_are_sequential() {
 
 #[test]
 fn analyze_with_base64_includes_data() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", true, None, None).unwrap();
+    let result =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", true, None, None, None).unwrap();
     for frame in &result.key_frames {
         assert!(
             frame.image_base64.is_some(),
@@ -63,7 +67,8 @@ fn analyze_with_base64_includes_data() {
 
 #[test]
 fn analyze_without_base64_omits_data() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+    let result =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     for frame in &result.key_frames {
         assert!(frame.image_base64.is_none());
     }
@@ -74,8 +79,17 @@ fn analyze_with_output_dir_persists_frames() {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().to_string_lossy().to_string();
 
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, Some(&dir), "png", false, None, None).unwrap();
+    let result = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        Some(&dir),
+        "png",
+        false,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
 
     for frame in &result.key_frames {
         assert!(
@@ -93,7 +107,8 @@ fn analyze_with_output_dir_persists_frames() {
 
 #[test]
 fn analyze_duration_is_reasonable() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+    let result =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     assert!(
         (result.duration_seconds - 5.0).abs() < 0.5,
         "Expected ~5s duration, got {}",
@@ -104,7 +119,7 @@ fn analyze_duration_is_reasonable() {
 #[test]
 fn analyze_source_matches_input() {
     let video = fixture_video();
-    let result = tomegane::analyze(&video, 1.0, None, "png", false, None, None).unwrap();
+    let result = tomegane::analyze(&video, 1.0, None, "png", false, None, None, None).unwrap();
     assert_eq!(result.source, video);
 }
 
@@ -118,6 +133,7 @@ fn analyze_rejects_missing_video() {
         false,
         None,
         None,
+        None,
     );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
@@ -125,7 +141,7 @@ fn analyze_rejects_missing_video() {
 
 #[test]
 fn analyze_rejects_invalid_format() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "bmp", false, None, None);
+    let result = tomegane::analyze(&fixture_video(), 1.0, None, "bmp", false, None, None, None);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Unsupported format"));
 }
@@ -133,9 +149,9 @@ fn analyze_rejects_invalid_format() {
 #[test]
 fn analyze_with_smaller_interval_extracts_more_frames() {
     let result_1s =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     let result_half =
-        tomegane::analyze(&fixture_video(), 0.5, None, "png", false, None, None).unwrap();
+        tomegane::analyze(&fixture_video(), 0.5, None, "png", false, None, None, None).unwrap();
 
     assert!(
         result_half.frame_count > result_1s.frame_count,
@@ -150,10 +166,20 @@ fn analyze_with_smaller_interval_extracts_more_frames() {
 #[test]
 fn analyze_with_threshold_reduces_frames() {
     // Without threshold: all 5 frames
-    let all = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
+    let all =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
     // With threshold: should be fewer (or equal for low-change test video)
-    let smart =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, Some(0.1), None).unwrap();
+    let smart = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        Some(0.1),
+        None,
+    )
+    .unwrap();
 
     assert!(
         smart.frame_count <= all.frame_count,
@@ -169,8 +195,17 @@ fn analyze_with_threshold_reduces_frames() {
 #[test]
 fn analyze_with_high_threshold_keeps_only_first() {
     // Threshold of 1.0 means only completely different frames pass
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, Some(1.0), None).unwrap();
+    let result = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        Some(1.0),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         result.frame_count, 1,
         "Threshold 1.0 should keep only the first frame"
@@ -180,8 +215,17 @@ fn analyze_with_high_threshold_keeps_only_first() {
 
 #[test]
 fn analyze_with_zero_threshold_keeps_all_changed() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, Some(0.0), None).unwrap();
+    let result = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        Some(0.0),
+        None,
+    )
+    .unwrap();
     // With threshold 0.0, any non-zero change passes — includes all frames
     // since even tiny differences between test video frames will be > 0.0
     assert_eq!(result.frame_count, 5);
@@ -189,8 +233,17 @@ fn analyze_with_zero_threshold_keeps_all_changed() {
 
 #[test]
 fn analyze_max_frames_caps_output() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, Some(3)).unwrap();
+    let result = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        None,
+        Some(3),
+    )
+    .unwrap();
     assert!(
         result.frame_count <= 3,
         "max_frames=3 should cap output, got {}",
@@ -206,6 +259,7 @@ fn analyze_max_frames_with_threshold() {
         None,
         "png",
         false,
+        None,
         Some(0.0),
         Some(2),
     )
@@ -221,8 +275,17 @@ fn analyze_max_frames_with_threshold() {
 
 #[test]
 fn analyze_threshold_produces_change_scores() {
-    let result =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, Some(0.0), None).unwrap();
+    let result = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        Some(0.0),
+        None,
+    )
+    .unwrap();
 
     // First frame always has score 0.0
     assert_eq!(result.key_frames[0].change_score, 0.0);
@@ -239,9 +302,19 @@ fn analyze_threshold_produces_change_scores() {
 
 #[test]
 fn analyze_total_extracted_stays_same_with_threshold() {
-    let all = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None).unwrap();
-    let smart =
-        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, Some(0.5), None).unwrap();
+    let all =
+        tomegane::analyze(&fixture_video(), 1.0, None, "png", false, None, None, None).unwrap();
+    let smart = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        Some(0.5),
+        None,
+    )
+    .unwrap();
 
     assert_eq!(
         all.total_frames_extracted, smart.total_frames_extracted,
@@ -251,7 +324,16 @@ fn analyze_total_extracted_stays_same_with_threshold() {
 
 #[test]
 fn analyze_rejects_invalid_threshold() {
-    let result = tomegane::analyze(&fixture_video(), 1.0, None, "png", false, Some(1.5), None);
+    let result = tomegane::analyze(
+        &fixture_video(),
+        1.0,
+        None,
+        "png",
+        false,
+        None,
+        Some(1.5),
+        None,
+    );
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Threshold"));
 }
@@ -343,4 +425,30 @@ fn cli_analyze_with_max_frames() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(parsed["frame_count"].as_u64().unwrap() <= 2);
+}
+
+#[test]
+fn cli_analyze_with_crop() {
+    let output = run_cli(&["analyze", &fixture_video(), "--crop", "0,0,16,16"]);
+    assert!(output.status.success());
+}
+
+#[test]
+fn cli_analyze_streams_json_lines() {
+    let output = run_cli(&[
+        "analyze",
+        &fixture_video(),
+        "--stream",
+        "--threshold",
+        "0.1",
+    ]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    let first: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(first["type"], "started");
+
+    let last: serde_json::Value = serde_json::from_str(stdout.lines().last().unwrap()).unwrap();
+    assert_eq!(last["type"], "completed");
 }

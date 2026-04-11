@@ -10,32 +10,65 @@ pub struct PHash(pub u64);
 /// Compute the perceptual hash (pHash) of an image file.
 ///
 /// Algorithm:
-/// 1. Resize to 8x8 grayscale
-/// 2. Compute the mean pixel value
-/// 3. Set each bit to 1 if the pixel is above the mean, 0 otherwise
-///
-/// This produces a 64-bit hash that is robust to scaling and minor changes
-/// but sensitive to meaningful visual differences.
+/// 1. Resize to 32x32 grayscale
+/// 2. Compute the 2D DCT
+/// 3. Keep the top-left 8x8 low-frequency coefficients
+/// 4. Compare coefficients against the mean of the non-DC terms
 pub fn phash(image_path: &Path) -> Result<PHash, String> {
     let img = image::open(image_path)
         .map_err(|e| format!("Failed to open image {}: {e}", image_path.display()))?;
 
-    // Resize to 8x8 and convert to grayscale
-    let small = img.resize_exact(8, 8, FilterType::Lanczos3).to_luma8();
+    let small = img.resize_exact(32, 32, FilterType::Lanczos3).to_luma8();
+    let pixels: Vec<f64> = small.pixels().map(|p| p.0[0] as f64 - 128.0).collect();
 
-    // Compute mean pixel value
-    let pixels: Vec<u8> = small.pixels().map(|p| p.0[0]).collect();
-    let mean: f64 = pixels.iter().map(|&p| p as f64).sum::<f64>() / pixels.len() as f64;
+    let coeffs = low_frequency_dct(&pixels, 32, 8);
+    let mean = coeffs.iter().skip(1).sum::<f64>() / (coeffs.len() - 1) as f64;
 
-    // Build hash: 1 if above mean, 0 otherwise
     let mut hash: u64 = 0;
-    for (i, &pixel) in pixels.iter().enumerate() {
-        if pixel as f64 > mean {
+    for (i, &coeff) in coeffs.iter().enumerate() {
+        if coeff > mean {
             hash |= 1 << i;
         }
     }
 
     Ok(PHash(hash))
+}
+
+fn low_frequency_dct(pixels: &[f64], size: usize, low_freq_size: usize) -> Vec<f64> {
+    let mut coeffs = Vec::with_capacity(low_freq_size * low_freq_size);
+
+    for u in 0..low_freq_size {
+        for v in 0..low_freq_size {
+            let alpha_u = if u == 0 {
+                (1.0 / size as f64).sqrt()
+            } else {
+                (2.0 / size as f64).sqrt()
+            };
+            let alpha_v = if v == 0 {
+                (1.0 / size as f64).sqrt()
+            } else {
+                (2.0 / size as f64).sqrt()
+            };
+
+            let mut sum = 0.0;
+            for x in 0..size {
+                for y in 0..size {
+                    let pixel = pixels[x * size + y];
+                    let cos_x = ((2 * x + 1) as f64 * u as f64 * std::f64::consts::PI
+                        / (2.0 * size as f64))
+                        .cos();
+                    let cos_y = ((2 * y + 1) as f64 * v as f64 * std::f64::consts::PI
+                        / (2.0 * size as f64))
+                        .cos();
+                    sum += pixel * cos_x * cos_y;
+                }
+            }
+
+            coeffs.push(alpha_u * alpha_v * sum);
+        }
+    }
+
+    coeffs
 }
 
 /// Compute the hamming distance between two perceptual hashes.
@@ -115,7 +148,7 @@ mod tests {
 
         // Extract two copies of the same frame
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 5.0, "png").unwrap();
+        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 5.0, "png", None).unwrap();
 
         let frame = tmp.path().join("frame_0001.png");
         let hash1 = phash(&frame).unwrap();
@@ -152,7 +185,7 @@ mod tests {
     fn select_key_frames_always_includes_first() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
+        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png", None).unwrap();
 
         let mut frames: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()
@@ -171,7 +204,7 @@ mod tests {
     fn high_threshold_selects_fewer_frames() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
+        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png", None).unwrap();
 
         let mut frames: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()
@@ -196,7 +229,7 @@ mod tests {
     fn max_frames_caps_output() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png").unwrap();
+        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png", None).unwrap();
 
         let mut frames: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()

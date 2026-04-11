@@ -53,9 +53,16 @@ tomegane analyze recording.mov
 # Smart frame selection — only keep frames with meaningful changes
 tomegane analyze recording.mov --threshold 0.15
 
+# Focus on a specific UI region
+tomegane analyze recording.mov --crop 120,80,1440,900 --threshold 0.15
+
+# Stream JSON events while frames are selected
+tomegane analyze recording.mov --threshold 0.15 --stream
+
 # Full control
 tomegane analyze recording.mov \
   --interval 0.5 \
+  --crop 120,80,1440,900 \
   --threshold 0.15 \
   --max-frames 20 \
   --output-dir ./frames \
@@ -68,12 +75,16 @@ tomegane analyze recording.mov \
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--interval` | `1.0` | Frame extraction interval in seconds |
+| `--crop` | *(full frame)* | Region of interest in `x,y,w,h` format |
 | `--threshold` | *(off)* | Change threshold for smart frame selection (0.0–1.0) |
 | `--max-frames` | *(no limit)* | Maximum number of key frames to return |
 | `--output-dir` | *(temp dir)* | Directory to save extracted frames |
 | `--format` | `png` | Image format (`png` or `jpg`) |
 | `--base64` | `false` | Include base64-encoded image data in JSON |
 | `--output` | *(stdout)* | Write JSON to a file instead of stdout |
+| `--stream` | `false` | Stream JSON events to stdout as frames are selected |
+
+`--stream` currently emits newline-delimited JSON events in the CLI. It does not support `--output`, and it does not yet support `--max-frames`.
 
 ### Output
 
@@ -147,6 +158,7 @@ Extract key frames from a screen recording.
 | `threshold` | number | no | `0.15` | Change threshold (0.0–1.0) |
 | `max_frames` | integer | no | `20` | Max frames to return |
 | `interval` | number | no | `0.5` | Extraction interval in seconds |
+| `crop` | string | no | — | Region of interest in `x,y,w,h` format |
 
 Returns a summary text block followed by alternating text annotations and image content blocks for each key frame.
 
@@ -158,6 +170,7 @@ Extract a single frame at a specific timestamp.
 |-----------|------|----------|-------------|
 | `video_path` | string | yes | Absolute path to the video file |
 | `timestamp_seconds` | number | yes | Timestamp to extract |
+| `crop` | string | no | Region of interest in `x,y,w,h` format |
 
 Returns the frame as an MCP image content block.
 
@@ -170,13 +183,14 @@ Compare two frames at different timestamps with a perceptual similarity score.
 | `video_path` | string | yes | Absolute path to the video file |
 | `timestamp_a` | number | yes | First timestamp |
 | `timestamp_b` | number | yes | Second timestamp |
+| `crop` | string | no | Region of interest in `x,y,w,h` format |
 
 Returns both frames with a change score (0.0 = identical, 1.0 = completely different).
 
 ## How it works
 
 1. **Frame extraction** — shells out to `ffmpeg` to extract frames at the configured interval
-2. **Perceptual hashing** — computes an 8×8 grayscale mean hash (pHash) for each frame
+2. **Perceptual hashing** — computes a DCT-based perceptual hash from low-frequency image coefficients
 3. **Smart selection** — compares consecutive frame hashes via hamming distance; only keeps frames where the change exceeds the threshold
 4. **Output** — returns structured JSON (CLI) or MCP image content blocks (MCP server)
 

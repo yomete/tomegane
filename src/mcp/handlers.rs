@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 use super::protocol::{ContentBlock, Tool, ToolResult};
-use crate::extract::ffmpeg;
+use crate::extract::ffmpeg::{self, CropRect};
 
 pub fn tool_definitions() -> Vec<Tool> {
     vec![
@@ -32,6 +32,10 @@ pub fn tool_definitions() -> Vec<Tool> {
                         "type": "number",
                         "description": "Frame extraction interval in seconds. Lower values capture more detail but take longer. Default: 0.5",
                         "default": 0.5
+                    },
+                    "crop": {
+                        "type": "string",
+                        "description": "Optional region-of-interest crop in x,y,w,h format"
                     }
                 },
                 "required": ["video_path"]
@@ -50,6 +54,10 @@ pub fn tool_definitions() -> Vec<Tool> {
                     "timestamp_seconds": {
                         "type": "number",
                         "description": "Timestamp in seconds to extract the frame from"
+                    },
+                    "crop": {
+                        "type": "string",
+                        "description": "Optional region-of-interest crop in x,y,w,h format"
                     }
                 },
                 "required": ["video_path", "timestamp_seconds"]
@@ -72,6 +80,10 @@ pub fn tool_definitions() -> Vec<Tool> {
                     "timestamp_b": {
                         "type": "number",
                         "description": "Second timestamp in seconds"
+                    },
+                    "crop": {
+                        "type": "string",
+                        "description": "Optional region-of-interest crop in x,y,w,h format"
                     }
                 },
                 "required": ["video_path", "timestamp_a", "timestamp_b"]
@@ -109,6 +121,10 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
         .and_then(|v| v.as_u64())
         .unwrap_or(20) as usize;
     let interval = args.get("interval").and_then(|v| v.as_f64()).unwrap_or(0.5);
+    let crop = match parse_crop(args) {
+        Ok(crop) => crop,
+        Err(e) => return error_result(&e),
+    };
 
     match crate::analyze(
         video_path,
@@ -116,6 +132,7 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
         None,
         "png",
         true, // always include base64 for MCP
+        crop,
         Some(threshold),
         Some(max_frames),
     ) {
@@ -171,35 +188,24 @@ fn handle_get_frame(args: &Value) -> ToolResult {
         Some(t) => t,
         None => return error_result("Missing required parameter: timestamp_seconds"),
     };
+    let crop = match parse_crop(args) {
+        Ok(crop) => crop,
+        Err(e) => return error_result(&e),
+    };
 
     let video = Path::new(video_path);
     if !video.exists() {
         return error_result(&format!("Video file not found: {video_path}"));
     }
 
-    // Extract single frame using ffmpeg
     let tmp = match tempfile::tempdir() {
         Ok(t) => t,
         Err(e) => return error_result(&format!("Failed to create temp dir: {e}")),
     };
 
     let output_path = tmp.path().join("frame.png");
-    let output = std::process::Command::new("ffmpeg")
-        .args([
-            "-ss",
-            &format!("{timestamp}"),
-            "-i",
-            video_path,
-            "-vframes",
-            "1",
-            "-q:v",
-            "2",
-            output_path.to_str().unwrap(),
-        ])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => match std::fs::read(&output_path) {
+    match ffmpeg::extract_single_frame(video, timestamp, &output_path, crop) {
+        Ok(()) => match std::fs::read(&output_path) {
             Ok(data) => {
                 let b64 = BASE64.encode(&data);
                 ToolResult {
@@ -217,11 +223,7 @@ fn handle_get_frame(args: &Value) -> ToolResult {
             }
             Err(e) => error_result(&format!("Failed to read frame: {e}")),
         },
-        Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            error_result(&format!("ffmpeg failed: {stderr}"))
-        }
-        Err(e) => error_result(&format!("Failed to run ffmpeg: {e}")),
+        Err(e) => error_result(&e),
     }
 }
 
@@ -239,6 +241,10 @@ fn handle_compare_frames(args: &Value) -> ToolResult {
     let ts_b = match args.get("timestamp_b").and_then(|v| v.as_f64()) {
         Some(t) => t,
         None => return error_result("Missing required parameter: timestamp_b"),
+    };
+    let crop = match parse_crop(args) {
+        Ok(crop) => crop,
+        Err(e) => return error_result(&e),
     };
 
     let video = Path::new(video_path);
@@ -268,27 +274,8 @@ fn handle_compare_frames(args: &Value) -> ToolResult {
     let frame_b = tmp.path().join("frame_b.png");
 
     for (ts, path) in [(ts_a, &frame_a), (ts_b, &frame_b)] {
-        let output = std::process::Command::new("ffmpeg")
-            .args([
-                "-ss",
-                &format!("{ts}"),
-                "-i",
-                video_path,
-                "-vframes",
-                "1",
-                "-q:v",
-                "2",
-                path.to_str().unwrap(),
-            ])
-            .output();
-
-        match output {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => {
-                let stderr = String::from_utf8_lossy(&o.stderr);
-                return error_result(&format!("ffmpeg failed for t={ts}s: {stderr}"));
-            }
-            Err(e) => return error_result(&format!("Failed to run ffmpeg: {e}")),
+        if let Err(e) = ffmpeg::extract_single_frame(video, ts, path, crop) {
+            return error_result(&format!("Failed to extract frame at t={ts}s: {e}"));
         }
     }
 
@@ -333,6 +320,13 @@ fn handle_compare_frames(args: &Value) -> ToolResult {
             },
         ],
         is_error: None,
+    }
+}
+
+fn parse_crop(args: &Value) -> Result<Option<CropRect>, String> {
+    match args.get("crop").and_then(|v| v.as_str()) {
+        Some(spec) => CropRect::parse(spec).map(Some),
+        None => Ok(None),
     }
 }
 

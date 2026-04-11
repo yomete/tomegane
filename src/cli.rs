@@ -34,6 +34,10 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         base64: bool,
 
+        /// Crop to a specific region of interest using x,y,w,h
+        #[arg(long)]
+        crop: Option<String>,
+
         /// Change threshold for smart frame selection (0.0 = keep all, 1.0 = only dramatic changes)
         #[arg(short, long)]
         threshold: Option<f64>,
@@ -45,6 +49,10 @@ pub enum Commands {
         /// Write JSON output to a file instead of stdout
         #[arg(long)]
         output: Option<String>,
+
+        /// Stream JSON events to stdout as frames are selected
+        #[arg(long, default_value_t = false)]
+        stream: bool,
 
         /// Print progress and debug info to stderr
         #[arg(short, long, default_value_t = false)]

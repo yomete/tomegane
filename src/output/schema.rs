@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 /// A single extracted frame from the video.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Frame {
     pub index: usize,
     pub timestamp_seconds: f64,
@@ -13,7 +13,7 @@ pub struct Frame {
 }
 
 /// The top-level result of analyzing a video.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AnalysisResult {
     pub source: String,
     pub duration_seconds: f64,
@@ -21,6 +21,23 @@ pub struct AnalysisResult {
     pub key_frames: Vec<Frame>,
     pub frame_count: usize,
     pub output_format: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamEvent {
+    Started {
+        source: String,
+        duration_seconds: f64,
+        total_frames_extracted: usize,
+        output_format: String,
+    },
+    Frame {
+        frame: Frame,
+    },
+    Completed {
+        result: AnalysisResult,
+    },
 }
 
 #[cfg(test)]
@@ -103,5 +120,19 @@ mod tests {
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["key_frames"].as_array().unwrap().len(), 0);
         assert_eq!(json["frame_count"], 0);
+    }
+
+    #[test]
+    fn stream_event_serializes_tagged_variants() {
+        let event = StreamEvent::Started {
+            source: "test.mp4".to_string(),
+            duration_seconds: 5.0,
+            total_frames_extracted: 5,
+            output_format: "png".to_string(),
+        };
+
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "started");
+        assert_eq!(json["source"], "test.mp4");
     }
 }

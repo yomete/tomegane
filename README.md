@@ -26,17 +26,17 @@ AI agents can't watch videos. When a user says "here's a recording of the bug", 
   - Ubuntu: `sudo apt install ffmpeg`
   - Windows: [ffmpeg.org/download](https://ffmpeg.org/download.html)
 
-## Installation
+## Quick Start
 
-Install `ffmpeg` first, then choose one of the following:
+### 1. Install tomegane
 
-### From crates.io
+From crates.io:
 
 ```bash
 cargo install tomegane
 ```
 
-### From source
+Or from source:
 
 ```bash
 git clone https://github.com/yomete/tomegane.git
@@ -44,10 +44,55 @@ cd tomegane
 cargo install --path .
 ```
 
-### Verify the install
+### 2. Verify the install
 
 ```bash
 tomegane --help
+```
+
+### 3. Set up MCP automatically
+
+Ask `tomegane` to detect supported MCP clients and offer to add itself:
+
+```bash
+tomegane setup
+```
+
+This is the recommended setup path. It detects supported clients, checks whether `tomegane` is already configured, and offers to install the MCP entry for you.
+
+By default this uses user-level config when supported. You can also target the current project or skip confirmation prompts:
+
+```bash
+tomegane setup --scope project
+tomegane setup --yes
+```
+
+Supported setup targets right now:
+
+- Claude Code
+- Cursor
+- Codex
+
+Notes:
+
+- Codex setup is currently user-scope only
+- Cursor supports both user and project scope
+- Claude Code support depends on the `claude` CLI being available on your `PATH`
+
+### 4. Try it
+
+```bash
+tomegane analyze recording.mov --threshold 0.15
+```
+
+## Installation Details
+
+If you just want the shortest path:
+
+```bash
+brew install ffmpeg
+cargo install tomegane
+tomegane setup
 ```
 
 ## CLI Usage
@@ -126,9 +171,29 @@ tomegane analyze recording.mov \
 
 tomegane runs as an MCP server over stdin/stdout. Any MCP-compatible client can use it.
 
-### Setup with Claude Code
+### Recommended setup
 
-Add to your Claude Code config (`~/.claude.json`):
+Use the built-in setup flow:
+
+```bash
+tomegane setup
+```
+
+This is the smoothest option for:
+
+- Claude Code
+- Cursor
+- Codex
+
+### Manual setup
+
+If you want to configure a client manually, the MCP server command is:
+
+```bash
+tomegane mcp
+```
+
+The equivalent MCP server definition is:
 
 ```json
 {
@@ -141,7 +206,7 @@ Add to your Claude Code config (`~/.claude.json`):
 }
 ```
 
-If you built from source and haven't installed globally:
+If you built from source and have not installed `tomegane` on your `PATH`, use the absolute path to the binary instead:
 
 ```json
 {
@@ -153,6 +218,11 @@ If you built from source and haven't installed globally:
   }
 }
 ```
+
+The only thing clients need is:
+
+- `command`: the `tomegane` binary
+- `args`: `["mcp"]`
 
 ### MCP Tools
 

@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+use crate::setup::SetupScope;
+
 #[derive(Parser)]
 #[command(
     name = "tomegane",
@@ -57,6 +59,17 @@ pub enum Commands {
         /// Print progress and debug info to stderr
         #[arg(short, long, default_value_t = false)]
         verbose: bool,
+    },
+
+    /// Detect supported MCP clients and help install tomegane into them
+    Setup {
+        /// Where to install the MCP configuration
+        #[arg(long, value_enum, default_value_t = SetupScope::User)]
+        scope: SetupScope,
+
+        /// Install without interactive confirmation prompts
+        #[arg(long, default_value_t = false)]
+        yes: bool,
     },
 
     /// Start the MCP server (JSON-RPC over stdin/stdout)

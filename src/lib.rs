@@ -2,6 +2,7 @@ pub mod cli;
 pub mod extract;
 pub mod mcp;
 pub mod output;
+pub mod setup;
 
 use std::path::{Path, PathBuf};
 

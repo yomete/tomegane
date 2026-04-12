@@ -6,6 +6,7 @@ use tomegane::AnalyzeOptions;
 use tomegane::cli::{Cli, Commands};
 use tomegane::extract::ffmpeg::CropRect;
 use tomegane::output::schema::StreamEvent;
+use tomegane::setup;
 
 fn main() {
     let cli = Cli::parse();
@@ -142,6 +143,13 @@ fn main() {
                     eprintln!("Error: {e}");
                     std::process::exit(1);
                 }
+            }
+        }
+
+        Commands::Setup { scope, yes } => {
+            if let Err(e) = setup::run_setup(scope, yes) {
+                eprintln!("Setup error: {e}");
+                std::process::exit(1);
             }
         }
 

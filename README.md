@@ -95,6 +95,26 @@ cargo install tomegane
 tomegane setup
 ```
 
+## Releasing
+
+To cut a new release, use the helper script:
+
+```bash
+scripts/release.sh 1.0.1
+```
+
+This script will:
+
+- update `Cargo.toml`
+- refresh `Cargo.lock`
+- run `cargo test`
+- run `cargo clippy --all-targets -- -D warnings`
+- commit the version bump
+- create the matching `vX.Y.Z` tag
+- push both `main` and the tag to `origin`
+
+The GitHub release workflow will then verify that the tag matches `Cargo.toml`, publish to crates.io, and create the GitHub release.
+
 ## CLI Usage
 
 ### Analyze a video

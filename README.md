@@ -28,6 +28,14 @@ AI agents can't watch videos. When a user says "here's a recording of the bug", 
 
 ## Installation
 
+Install `ffmpeg` first, then choose one of the following:
+
+### From crates.io
+
+```bash
+cargo install tomegane
+```
+
 ### From source
 
 ```bash
@@ -36,10 +44,10 @@ cd tomegane
 cargo install --path .
 ```
 
-### From crates.io (coming soon)
+### Verify the install
 
 ```bash
-cargo install tomegane
+tomegane --help
 ```
 
 ## CLI Usage

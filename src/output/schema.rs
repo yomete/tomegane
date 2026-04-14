@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::analysis::AnalysisMode;
+
 /// A single extracted frame from the video.
 #[derive(Debug, Clone, Serialize)]
 pub struct Frame {
@@ -16,11 +18,58 @@ pub struct Frame {
 #[derive(Debug, Clone, Serialize)]
 pub struct AnalysisResult {
     pub source: String,
+    pub analysis_mode: AnalysisMode,
     pub duration_seconds: f64,
     pub total_frames_extracted: usize,
     pub key_frames: Vec<Frame>,
     pub frame_count: usize,
     pub output_format: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub performance_insights: Option<PerformanceInsights>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PerformanceInsights {
+    pub summary: String,
+    pub average_change_score: f64,
+    pub peak_change_score: f64,
+    pub elevated_change_threshold: f64,
+    pub frame_deltas: Vec<FrameDelta>,
+    pub suspicious_windows: Vec<SuspiciousWindow>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FrameDelta {
+    pub from_index: usize,
+    pub to_index: usize,
+    pub start_timestamp_seconds: f64,
+    pub end_timestamp_seconds: f64,
+    pub change_score: f64,
+    pub changed_area_ratio: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hotspot: Option<ChangeHotspot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SuspiciousWindow {
+    pub start_timestamp_seconds: f64,
+    pub end_timestamp_seconds: f64,
+    pub sample_count: usize,
+    pub average_change_score: f64,
+    pub peak_change_score: f64,
+    pub average_changed_area_ratio: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hotspot: Option<ChangeHotspot>,
+    pub assessment: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeHotspot {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+    pub coverage_ratio: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,6 +130,7 @@ mod tests {
     fn analysis_result_serializes_correctly() {
         let result = AnalysisResult {
             source: "test.mp4".to_string(),
+            analysis_mode: AnalysisMode::Overview,
             duration_seconds: 5.0,
             total_frames_extracted: 5,
             key_frames: vec![Frame {
@@ -93,12 +143,14 @@ mod tests {
             }],
             frame_count: 1,
             output_format: "png".to_string(),
+            performance_insights: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed["source"], "test.mp4");
+        assert_eq!(parsed["analysis_mode"], "overview");
         assert_eq!(parsed["duration_seconds"], 5.0);
         assert_eq!(parsed["total_frames_extracted"], 5);
         assert_eq!(parsed["frame_count"], 1);
@@ -110,11 +162,13 @@ mod tests {
     fn analysis_result_with_empty_frames() {
         let result = AnalysisResult {
             source: "empty.mp4".to_string(),
+            analysis_mode: AnalysisMode::Overview,
             duration_seconds: 0.0,
             total_frames_extracted: 0,
             key_frames: vec![],
             frame_count: 0,
             output_format: "png".to_string(),
+            performance_insights: None,
         };
 
         let json = serde_json::to_value(&result).unwrap();

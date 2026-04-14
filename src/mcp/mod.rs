@@ -254,6 +254,38 @@ mod tests {
     }
 
     #[test]
+    fn handle_tools_call_analyze_in_performance_mode() {
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Some(json!(55)),
+            method: "tools/call".to_string(),
+            params: Some(json!({
+                "name": "analyze_video",
+                "arguments": {
+                    "video_path": fixture.to_string_lossy(),
+                    "mode": "performance"
+                }
+            })),
+        };
+
+        let response = handle_request(&request).unwrap();
+        let result = response.result.unwrap();
+        assert!(result["isError"].is_null());
+
+        let content = result["content"].as_array().unwrap();
+        let summary_text = content
+            .iter()
+            .find_map(|block| {
+                (block["type"] == "text").then(|| block["text"].as_str().unwrap_or_default())
+            })
+            .unwrap_or_default();
+        assert!(summary_text.contains("Mode: performance"));
+    }
+
+    #[test]
     fn handle_get_frame_with_fixture() {
         let fixture =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");

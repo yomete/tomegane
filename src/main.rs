@@ -3,6 +3,7 @@ use std::time::Instant;
 use clap::Parser;
 
 use tomegane::AnalyzeOptions;
+use tomegane::analysis::AnalysisMode;
 use tomegane::cli::{Cli, Commands};
 use tomegane::extract::ffmpeg::CropRect;
 use tomegane::output::schema::StreamEvent;
@@ -21,6 +22,7 @@ fn main() {
             crop,
             threshold,
             max_frames,
+            mode,
             output,
             stream,
             verbose,
@@ -38,6 +40,13 @@ fn main() {
                 if let Some(m) = max_frames {
                     eprintln!("Max frames: {m}");
                 }
+                eprintln!(
+                    "Mode: {}",
+                    match mode {
+                        AnalysisMode::Overview => "overview",
+                        AnalysisMode::Performance => "performance",
+                    }
+                );
             }
 
             let crop = match crop {
@@ -60,6 +69,7 @@ fn main() {
                 crop,
                 threshold,
                 max_frames,
+                analysis_mode: mode,
             };
 
             let result = if stream {
@@ -82,6 +92,7 @@ fn main() {
                             include_base64: false,
                             threshold: None,
                             max_frames: Some(1),
+                            analysis_mode: AnalysisMode::Overview,
                             ..options.clone()
                         },
                     )?;

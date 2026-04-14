@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+use crate::analysis::AnalysisMode;
 use crate::setup::SetupScope;
 
 #[derive(Parser)]
@@ -47,6 +48,10 @@ pub enum Commands {
         /// Maximum number of key frames to return
         #[arg(short, long)]
         max_frames: Option<usize>,
+
+        /// Analysis mode: overview for frame extraction, performance for jank-oriented insights
+        #[arg(long, value_enum, default_value_t = AnalysisMode::Overview)]
+        mode: AnalysisMode,
 
         /// Write JSON output to a file instead of stdout
         #[arg(long)]

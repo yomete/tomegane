@@ -307,6 +307,34 @@ fn analyze_total_extracted_stays_same_with_threshold() {
 }
 
 #[test]
+fn analyze_performance_mode_populates_insights() {
+    let result = tomegane::analyze(
+        &fixture_video(),
+        &AnalyzeOptions {
+            interval: 0.5,
+            analysis_mode: tomegane::analysis::AnalysisMode::Performance,
+            ..options()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        serde_json::to_value(&result).unwrap()["analysis_mode"],
+        "performance"
+    );
+
+    let insights = result
+        .performance_insights
+        .as_ref()
+        .expect("performance mode should populate insights");
+    assert_eq!(
+        insights.frame_deltas.len(),
+        result.total_frames_extracted - 1
+    );
+    assert!(!insights.summary.is_empty());
+}
+
+#[test]
 fn analyze_rejects_invalid_threshold() {
     let result = tomegane::analyze(
         &fixture_video(),
@@ -412,6 +440,17 @@ fn cli_analyze_with_max_frames() {
 fn cli_analyze_with_crop() {
     let output = run_cli(&["analyze", &fixture_video(), "--crop", "0,0,16,16"]);
     assert!(output.status.success());
+}
+
+#[test]
+fn cli_analyze_with_performance_mode() {
+    let output = run_cli(&["analyze", &fixture_video(), "--mode", "performance"]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(parsed["analysis_mode"], "performance");
+    assert!(parsed["performance_insights"]["summary"].is_string());
 }
 
 #[test]

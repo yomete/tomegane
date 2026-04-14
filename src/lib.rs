@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod cli;
 pub mod extract;
 pub mod mcp;
@@ -9,6 +10,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
+use analysis::{AnalysisMode, inspect_performance};
 use extract::{diff, ffmpeg};
 use output::schema::{AnalysisResult, Frame};
 
@@ -21,6 +23,7 @@ pub struct AnalyzeOptions<'a> {
     pub crop: Option<ffmpeg::CropRect>,
     pub threshold: Option<f64>,
     pub max_frames: Option<usize>,
+    pub analysis_mode: AnalysisMode,
 }
 
 impl Default for AnalyzeOptions<'_> {
@@ -33,6 +36,7 @@ impl Default for AnalyzeOptions<'_> {
             crop: None,
             threshold: None,
             max_frames: None,
+            analysis_mode: AnalysisMode::Overview,
         }
     }
 }
@@ -167,14 +171,20 @@ fn analyze_internal(
     }
 
     let frame_count = frames.len();
+    let performance_insights = match options.analysis_mode {
+        AnalysisMode::Overview => None,
+        AnalysisMode::Performance => Some(inspect_performance(&all_paths, options.interval)?),
+    };
 
     Ok(AnalysisResult {
         source: video_path.to_string(),
+        analysis_mode: options.analysis_mode,
         duration_seconds: duration,
         total_frames_extracted: total_extracted,
         key_frames: frames,
         frame_count,
         output_format: options.format.to_string(),
+        performance_insights,
     })
 }
 

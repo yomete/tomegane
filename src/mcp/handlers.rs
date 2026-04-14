@@ -5,6 +5,7 @@ use std::path::Path;
 
 use super::protocol::{ContentBlock, Tool, ToolResult};
 use crate::AnalyzeOptions;
+use crate::analysis::AnalysisMode;
 use crate::extract::ffmpeg::{self, CropRect};
 
 pub fn tool_definitions() -> Vec<Tool> {
@@ -33,6 +34,12 @@ pub fn tool_definitions() -> Vec<Tool> {
                         "type": "number",
                         "description": "Frame extraction interval in seconds. Lower values capture more detail but take longer. Default: 0.5",
                         "default": 0.5
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["overview", "performance"],
+                        "description": "Analysis mode. Use performance to detect likely jank windows and localized repaint activity. Default: overview",
+                        "default": "overview"
                     },
                     "crop": {
                         "type": "string",
@@ -122,6 +129,10 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
         .and_then(|v| v.as_u64())
         .unwrap_or(20) as usize;
     let interval = args.get("interval").and_then(|v| v.as_f64()).unwrap_or(0.5);
+    let analysis_mode = match parse_mode(args) {
+        Ok(mode) => mode,
+        Err(e) => return error_result(&e),
+    };
     let crop = match parse_crop(args) {
         Ok(crop) => crop,
         Err(e) => return error_result(&e),
@@ -135,6 +146,7 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
         crop,
         threshold: Some(threshold),
         max_frames: Some(max_frames),
+        analysis_mode,
     };
 
     match crate::analyze(video_path, &options) {
@@ -144,8 +156,12 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
             // Summary text
             content.push(ContentBlock::Text {
                 text: format!(
-                    "Analyzed: {}\nDuration: {:.1}s\nTotal frames extracted: {}\nKey frames selected: {} (threshold: {}, max: {})\n",
+                    "Analyzed: {}\nMode: {}\nDuration: {:.1}s\nTotal frames extracted: {}\nKey frames selected: {} (threshold: {}, max: {})\n",
                     result.source,
+                    match result.analysis_mode {
+                        AnalysisMode::Overview => "overview",
+                        AnalysisMode::Performance => "performance",
+                    },
                     result.duration_seconds,
                     result.total_frames_extracted,
                     result.frame_count,
@@ -153,6 +169,18 @@ fn handle_analyze_video(args: &Value) -> ToolResult {
                     max_frames,
                 ),
             });
+
+            if let Some(insights) = &result.performance_insights {
+                content.push(ContentBlock::Text {
+                    text: format!(
+                        "Performance summary: {}\nSuspicious windows: {} | Avg change: {:.3} | Peak change: {:.3}\n",
+                        insights.summary,
+                        insights.suspicious_windows.len(),
+                        insights.average_change_score,
+                        insights.peak_change_score,
+                    ),
+                });
+            }
 
             // Each key frame as an image + text annotation
             for frame in &result.key_frames {
@@ -329,6 +357,16 @@ fn parse_crop(args: &Value) -> Result<Option<CropRect>, String> {
     match args.get("crop").and_then(|v| v.as_str()) {
         Some(spec) => CropRect::parse(spec).map(Some),
         None => Ok(None),
+    }
+}
+
+fn parse_mode(args: &Value) -> Result<AnalysisMode, String> {
+    match args.get("mode").and_then(|v| v.as_str()) {
+        None | Some("overview") => Ok(AnalysisMode::Overview),
+        Some("performance") => Ok(AnalysisMode::Performance),
+        Some(other) => Err(format!(
+            "Invalid mode '{other}'. Expected one of: overview, performance"
+        )),
     }
 }
 

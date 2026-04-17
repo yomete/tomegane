@@ -79,6 +79,12 @@ Notes:
 - Cursor supports both user and project scope
 - Claude Code support depends on the `claude` CLI being available on your `PATH`
 
+To see what's already wired up without writing anything, run:
+
+```bash
+tomegane setup --list
+```
+
 ### 4. Try it
 
 ```bash
@@ -142,7 +148,31 @@ tomegane analyze recording.mov \
 | `--output` | *(stdout)* | Write JSON to a file instead of stdout |
 | `--stream` | `false` | Stream JSON events to stdout as frames are selected |
 
-`--stream` currently emits newline-delimited JSON events in the CLI. It does not support `--output`, and it does not yet support `--max-frames`.
+`--stream` emits newline-delimited JSON events to stdout. It is mutually
+exclusive with `--output` and `--max-frames`; attempting to combine them is
+rejected at argument-parse time.
+
+### Exit codes
+
+`tomegane analyze` uses distinct exit codes so scripts can branch on the
+failure reason:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `2` | Invalid argument (bad threshold, crop, format, incompatible flags) |
+| `3` | ffmpeg not installed |
+| `4` | I/O, missing video, ffmpeg failure, or no frames extracted |
+| `1` | Anything else |
+
+### Logging
+
+Internal logs are emitted via `tracing`. Pass `-v` / `--verbose` to enable
+debug output, or set `RUST_LOG=tomegane=debug` for fine-grained control:
+
+```bash
+RUST_LOG=tomegane=debug tomegane analyze recording.mov
+```
 
 ### Output
 
@@ -287,8 +317,17 @@ Extract key frames from a screen recording.
 | `interval` | number | no | `0.5` | Extraction interval in seconds |
 | `mode` | string | no | `overview` | `overview` or `performance` |
 | `crop` | string | no | — | Region of interest in `x,y,w,h` format |
+| `format` | string | no | `png` | `png` or `jpg` |
+| `include_image_data` | boolean | no | `true` | Set to `false` to skip inline base64 image blocks and keep responses small |
+| `output_dir` | string | no | *(temp dir)* | Persist extracted frames to a specific directory; returned `image_path`s stay valid after the call |
 
-Returns a summary text block followed by alternating text annotations and image content blocks for each key frame. In `performance` mode the summary also includes likely jank windows, average/peak change scores, and localized repaint hints.
+Returns a summary text block followed by alternating text annotations and
+image content blocks for each key frame. Text annotations now include the
+on-disk `image_path`, which is useful when `include_image_data` is `false`.
+In `performance` mode the summary also includes likely jank windows,
+average/peak change scores, and localized repaint hints. Errors carry a
+stable machine-readable tag like `[tomegane error:video_not_found]` at the
+start of the text body.
 
 #### `get_frame`
 

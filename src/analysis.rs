@@ -5,6 +5,7 @@ use image::GrayImage;
 use rayon::prelude::*;
 use serde::Serialize;
 
+use crate::error::{Error, Result};
 use crate::extract::diff;
 use crate::output::schema::{ChangeHotspot, FrameDelta, PerformanceInsights, SuspiciousWindow};
 
@@ -18,10 +19,7 @@ pub enum AnalysisMode {
     Performance,
 }
 
-pub fn inspect_performance(
-    frame_paths: &[PathBuf],
-    interval: f64,
-) -> Result<PerformanceInsights, String> {
+pub fn inspect_performance(frame_paths: &[PathBuf], interval: f64) -> Result<PerformanceInsights> {
     if frame_paths.len() < 2 {
         return Ok(PerformanceInsights {
             summary: "Performance mode needs at least two sampled frames to compare movement."
@@ -37,7 +35,7 @@ pub fn inspect_performance(
     let hashes: Vec<_> = frame_paths
         .par_iter()
         .map(|path| diff::phash(path))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<std::result::Result<Vec<_>, Error>>()?;
 
     let mut previous = load_luma(&frame_paths[0])?;
     let (frame_width, frame_height) = previous.dimensions();
@@ -47,10 +45,10 @@ pub fn inspect_performance(
     for (idx, path) in frame_paths.iter().enumerate().skip(1) {
         let current = load_luma(path)?;
         if current.dimensions() != (frame_width, frame_height) {
-            return Err(format!(
+            return Err(Error::InvalidArgument(format!(
                 "Frame {} has different dimensions from the first extracted frame",
                 path.display()
-            ));
+            )));
         }
 
         let diff_metrics = measure_visual_diff(&previous, &current, frame_area);
@@ -317,9 +315,12 @@ fn classify_window(
     "Large regions changed together; this is broader than a single control repaint.".to_string()
 }
 
-fn load_luma(path: &Path) -> Result<GrayImage, String> {
+fn load_luma(path: &Path) -> Result<GrayImage> {
     image::open(path)
-        .map_err(|e| format!("Failed to open image {}: {e}", path.display()))
+        .map_err(|e| Error::ImageDecode {
+            path: path.to_path_buf(),
+            source: e,
+        })
         .map(|img| img.to_luma8())
 }
 
@@ -411,7 +412,7 @@ mod tests {
         assert_eq!(insights.frame_deltas.len(), 0);
     }
 
-    fn write_test_frame(path: &Path, offset: u32) -> Result<(), String> {
+    fn write_test_frame(path: &Path, offset: u32) -> std::result::Result<(), image::ImageError> {
         let mut image = GrayImage::from_pixel(48, 48, Luma([255]));
 
         for x in offset..(offset + 10).min(48) {
@@ -420,8 +421,6 @@ mod tests {
             }
         }
 
-        image
-            .save(path)
-            .map_err(|e| format!("Failed to write test frame {}: {e}", path.display()))
+        image.save(path)
     }
 }

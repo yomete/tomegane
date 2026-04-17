@@ -1,6 +1,6 @@
 [package]
 name = "tomegane"
-version = "1.0.3"
+version = "1.1.0"
 edition = "2024"
 description = "The remote-seeing eye for AI agents — extract smart frames from screen recordings"
 license = "MIT"
@@ -16,4 +16,7 @@ base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 rayon = "1"
 tempfile = "3"
+thiserror = "2"
 toml_edit = "0.22"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

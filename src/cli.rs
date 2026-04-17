@@ -45,16 +45,16 @@ pub enum Commands {
         #[arg(short, long)]
         threshold: Option<f64>,
 
-        /// Maximum number of key frames to return
-        #[arg(short, long)]
+        /// Maximum number of key frames to return (incompatible with --stream)
+        #[arg(short, long, conflicts_with = "stream")]
         max_frames: Option<usize>,
 
         /// Analysis mode: overview for frame extraction, performance for jank-oriented insights
         #[arg(long, value_enum, default_value_t = AnalysisMode::Overview)]
         mode: AnalysisMode,
 
-        /// Write JSON output to a file instead of stdout
-        #[arg(long)]
+        /// Write JSON output to a file instead of stdout (incompatible with --stream)
+        #[arg(long, conflicts_with = "stream")]
         output: Option<String>,
 
         /// Stream JSON events to stdout as frames are selected
@@ -73,8 +73,12 @@ pub enum Commands {
         scope: SetupScope,
 
         /// Install without interactive confirmation prompts
-        #[arg(long, default_value_t = false)]
+        #[arg(long, default_value_t = false, conflicts_with = "list")]
         yes: bool,
+
+        /// Only report detected clients and status; do not modify any config
+        #[arg(long, default_value_t = false)]
+        list: bool,
     },
 
     /// Start the MCP server (JSON-RPC over stdin/stdout)

@@ -3,6 +3,8 @@ use std::path::Path;
 use image::imageops::FilterType;
 use rayon::prelude::*;
 
+use crate::error::{Error, Result};
+
 /// A perceptual hash — 64-bit fingerprint of an image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PHash(pub u64);
@@ -14,9 +16,11 @@ pub struct PHash(pub u64);
 /// 2. Compute the 2D DCT
 /// 3. Keep the top-left 8x8 low-frequency coefficients
 /// 4. Compare coefficients against the mean of the non-DC terms
-pub fn phash(image_path: &Path) -> Result<PHash, String> {
-    let img = image::open(image_path)
-        .map_err(|e| format!("Failed to open image {}: {e}", image_path.display()))?;
+pub fn phash(image_path: &Path) -> Result<PHash> {
+    let img = image::open(image_path).map_err(|e| Error::ImageDecode {
+        path: image_path.to_path_buf(),
+        source: e,
+    })?;
 
     let small = img.resize_exact(32, 32, FilterType::Lanczos3).to_luma8();
     let pixels: Vec<f64> = small.pixels().map(|p| p.0[0] as f64 - 128.0).collect();
@@ -95,7 +99,7 @@ pub fn select_key_frames(
     frame_paths: &[impl AsRef<Path> + Sync],
     threshold: f64,
     max_frames: Option<usize>,
-) -> Result<Vec<(usize, f64)>, String> {
+) -> Result<Vec<(usize, f64)>> {
     if frame_paths.is_empty() {
         return Ok(vec![]);
     }
@@ -104,7 +108,7 @@ pub fn select_key_frames(
     let hashes: Vec<PHash> = frame_paths
         .par_iter()
         .map(|path| phash(path.as_ref()))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<std::result::Result<Vec<_>, Error>>()?;
 
     // Sequential selection: compare against last *included* frame
     let mut selected: Vec<(usize, f64)> = vec![(0, 0.0)];
@@ -148,7 +152,14 @@ mod tests {
 
         // Extract two copies of the same frame
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 5.0, "png", None).unwrap();
+        crate::extract::ffmpeg::extract_frames(
+            &fixture,
+            tmp.path(),
+            5.0,
+            crate::ImageFormat::Png,
+            None,
+        )
+        .unwrap();
 
         let frame = tmp.path().join("frame_0001.png");
         let hash1 = phash(&frame).unwrap();
@@ -185,7 +196,14 @@ mod tests {
     fn select_key_frames_always_includes_first() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png", None).unwrap();
+        crate::extract::ffmpeg::extract_frames(
+            &fixture,
+            tmp.path(),
+            1.0,
+            crate::ImageFormat::Png,
+            None,
+        )
+        .unwrap();
 
         let mut frames: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()
@@ -204,7 +222,14 @@ mod tests {
     fn high_threshold_selects_fewer_frames() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png", None).unwrap();
+        crate::extract::ffmpeg::extract_frames(
+            &fixture,
+            tmp.path(),
+            1.0,
+            crate::ImageFormat::Png,
+            None,
+        )
+        .unwrap();
 
         let mut frames: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()
@@ -229,7 +254,14 @@ mod tests {
     fn max_frames_caps_output() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
         let tmp = tempfile::tempdir().unwrap();
-        crate::extract::ffmpeg::extract_frames(&fixture, tmp.path(), 1.0, "png", None).unwrap();
+        crate::extract::ffmpeg::extract_frames(
+            &fixture,
+            tmp.path(),
+            1.0,
+            crate::ImageFormat::Png,
+            None,
+        )
+        .unwrap();
 
         let mut frames: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()

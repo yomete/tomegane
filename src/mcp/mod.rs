@@ -4,7 +4,9 @@ pub mod protocol;
 use std::io::{BufRead, Write};
 
 use serde_json::Value;
+use tracing::info;
 
+use crate::error::Result;
 use protocol::{
     InitializeResult, JsonRpcRequest, JsonRpcResponse, ServerCapabilities, ServerInfo,
     ToolCallParams, ToolsCapability, ToolsListResult,
@@ -14,15 +16,15 @@ use protocol::{
 ///
 /// Reads JSON-RPC messages (one per line) from stdin and writes responses to stdout.
 /// Supports the MCP lifecycle: initialize, notifications/initialized, tools/list, tools/call.
-pub fn run_server() -> Result<(), String> {
+pub fn run_server() -> Result<()> {
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
 
-    eprintln!("tomegane MCP server started");
+    info!("tomegane MCP server started");
 
     for line in stdin.lock().lines() {
-        let line = line.map_err(|e| format!("Failed to read stdin: {e}"))?;
+        let line = line?;
         let line = line.trim().to_string();
 
         if line.is_empty() {
@@ -53,13 +55,10 @@ pub fn run_server() -> Result<(), String> {
     Ok(())
 }
 
-fn write_response(stdout: &mut impl Write, response: &JsonRpcResponse) -> Result<(), String> {
-    let json = serde_json::to_string(response)
-        .map_err(|e| format!("Failed to serialize response: {e}"))?;
-    writeln!(stdout, "{json}").map_err(|e| format!("Failed to write to stdout: {e}"))?;
-    stdout
-        .flush()
-        .map_err(|e| format!("Failed to flush stdout: {e}"))?;
+fn write_response(stdout: &mut impl Write, response: &JsonRpcResponse) -> Result<()> {
+    let json = serde_json::to_string(response)?;
+    writeln!(stdout, "{json}")?;
+    stdout.flush()?;
     Ok(())
 }
 
@@ -283,6 +282,63 @@ mod tests {
             })
             .unwrap_or_default();
         assert!(summary_text.contains("Mode: performance"));
+    }
+
+    #[test]
+    fn handle_analyze_video_respects_include_image_data_false() {
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Some(json!(70)),
+            method: "tools/call".to_string(),
+            params: Some(json!({
+                "name": "analyze_video",
+                "arguments": {
+                    "video_path": fixture.to_string_lossy(),
+                    "max_frames": 3,
+                    "format": "jpg",
+                    "include_image_data": false
+                }
+            })),
+        };
+
+        let response = handle_request(&request).unwrap();
+        let result = response.result.unwrap();
+        assert!(result["isError"].is_null());
+
+        let content = result["content"].as_array().unwrap();
+        let has_image_block = content.iter().any(|b| b["type"] == "image");
+        assert!(
+            !has_image_block,
+            "include_image_data=false should suppress inline image blocks"
+        );
+    }
+
+    #[test]
+    fn handle_get_frame_rejects_timestamp_past_duration() {
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/test_video.mp4");
+
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Some(json!(71)),
+            method: "tools/call".to_string(),
+            params: Some(json!({
+                "name": "get_frame",
+                "arguments": {
+                    "video_path": fixture.to_string_lossy(),
+                    "timestamp_seconds": 1000.0
+                }
+            })),
+        };
+
+        let response = handle_request(&request).unwrap();
+        let result = response.result.unwrap();
+        assert_eq!(result["isError"], true);
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("timestamp_out_of_range"));
     }
 
     #[test]

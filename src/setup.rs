@@ -7,6 +7,8 @@ use std::process::Command;
 use serde_json::{Map, Value, json};
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
+use crate::error::{Error, Result};
+
 const SERVER_NAME: &str = "tomegane";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -56,26 +58,32 @@ struct Detection {
     detail: String,
 }
 
-pub fn run_setup(scope: SetupScope, yes: bool) -> Result<(), String> {
-    let exe =
-        env::current_exe().map_err(|e| format!("Failed to locate current executable: {e}"))?;
-    let cwd =
-        env::current_dir().map_err(|e| format!("Failed to determine current directory: {e}"))?;
+fn io_err<E: std::fmt::Display>(what: String, e: E) -> Error {
+    Error::InvalidArgument(format!("{what}: {e}"))
+}
+
+pub fn run_setup(scope: SetupScope, yes: bool) -> Result<()> {
+    let exe = env::current_exe()
+        .map_err(|e| io_err("Failed to locate current executable".to_string(), e))?;
+    let cwd = env::current_dir()
+        .map_err(|e| io_err("Failed to determine current directory".to_string(), e))?;
 
     println!("tomegane setup");
     println!("Using {} scope.", scope.label());
     println!();
 
-    let detections = vec![
-        detect_claude(scope),
-        detect_cursor(scope, &cwd),
-        detect_codex(scope),
-    ];
+    let detections = detect_all(scope, &cwd);
 
     let available = detections.iter().filter(|d| d.available).count();
     if available == 0 {
         println!("No supported MCP clients were detected.");
         println!("Supported clients right now: Claude Code, Cursor, and Codex.");
+        if scope == SetupScope::Project {
+            println!();
+            println!(
+                "Note: Codex MCP is user-scope only; re-run without --scope project to set it up."
+            );
+        }
         return Ok(());
     }
 
@@ -125,6 +133,42 @@ pub fn run_setup(scope: SetupScope, yes: bool) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Print what's detected and whether tomegane is already configured, without
+/// modifying any file. Safe to run any time.
+pub fn run_list(scope: SetupScope) -> Result<()> {
+    let cwd = env::current_dir()
+        .map_err(|e| io_err("Failed to determine current directory".to_string(), e))?;
+
+    println!("tomegane setup — status ({} scope)", scope.label());
+    println!();
+
+    for detection in detect_all(scope, &cwd) {
+        let status = if !detection.available {
+            "not detected"
+        } else if detection.configured {
+            "configured"
+        } else {
+            "not configured"
+        };
+        println!(
+            "  {:<12} {:<16} {}",
+            detection.kind.name(),
+            status,
+            detection.detail
+        );
+    }
+
+    Ok(())
+}
+
+fn detect_all(scope: SetupScope, cwd: &Path) -> Vec<Detection> {
+    vec![
+        detect_claude(scope),
+        detect_cursor(scope, cwd),
+        detect_codex(scope),
+    ]
 }
 
 fn detect_claude(scope: SetupScope) -> Detection {
@@ -193,7 +237,11 @@ fn detect_codex(scope: SetupScope) -> Detection {
     }
 }
 
-fn install_claude(scope: SetupScope, exe: &Path) -> Result<(), String> {
+fn install_claude(scope: SetupScope, exe: &Path) -> Result<()> {
+    let exe_str = exe
+        .to_str()
+        .ok_or_else(|| Error::InvalidArgument("Executable path contains invalid UTF-8".into()))?;
+
     let output = Command::new("claude")
         .args([
             "mcp",
@@ -202,38 +250,34 @@ fn install_claude(scope: SetupScope, exe: &Path) -> Result<(), String> {
             "--scope",
             scope.as_claude_scope(),
             "--",
-            exe.to_str()
-                .ok_or("Executable path contains invalid UTF-8")?,
+            exe_str,
             "mcp",
         ])
         .output()
-        .map_err(|e| format!("Failed to run `claude mcp add`: {e}"))?;
+        .map_err(|e| io_err("Failed to run `claude mcp add`".to_string(), e))?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("`claude mcp add` failed: {stderr}"));
+        return Err(Error::InvalidArgument(format!(
+            "`claude mcp add` failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
 
     Ok(())
 }
 
-fn install_cursor(scope: SetupScope, cwd: &Path, exe: &Path) -> Result<(), String> {
+fn install_cursor(scope: SetupScope, cwd: &Path, exe: &Path) -> Result<()> {
     let config_path = cursor_config_path(scope, cwd);
     if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "Failed to create config directory {}: {e}",
-                parent.display()
-            )
-        })?;
+        fs::create_dir_all(parent)?;
     }
 
     let mut root = read_json_object_or_default(&config_path)?;
     let root_obj = root.as_object_mut().ok_or_else(|| {
-        format!(
+        Error::InvalidArgument(format!(
             "Cursor config at {} is not a JSON object",
             config_path.display()
-        )
+        ))
     })?;
 
     let mcp_servers = root_obj
@@ -241,10 +285,10 @@ fn install_cursor(scope: SetupScope, cwd: &Path, exe: &Path) -> Result<(), Strin
         .or_insert_with(|| Value::Object(Map::new()));
 
     let servers_obj = mcp_servers.as_object_mut().ok_or_else(|| {
-        format!(
+        Error::InvalidArgument(format!(
             "Cursor config at {} has a non-object `mcpServers` field",
             config_path.display()
-        )
+        ))
     })?;
 
     servers_obj.insert(
@@ -255,31 +299,23 @@ fn install_cursor(scope: SetupScope, cwd: &Path, exe: &Path) -> Result<(), Strin
         }),
     );
 
-    let serialized = serde_json::to_string_pretty(&root)
-        .map_err(|e| format!("Failed to serialize Cursor config: {e}"))?;
-    fs::write(&config_path, format!("{serialized}\n")).map_err(|e| {
-        format!(
-            "Failed to write Cursor config {}: {e}",
-            config_path.display()
-        )
-    })?;
+    let serialized = serde_json::to_string_pretty(&root)?;
+    fs::write(&config_path, format!("{serialized}\n"))?;
 
     Ok(())
 }
 
-fn install_codex(scope: SetupScope, exe: &Path) -> Result<(), String> {
+fn install_codex(scope: SetupScope, exe: &Path) -> Result<()> {
     if scope != SetupScope::User {
-        return Err("Codex setup currently supports only user scope".to_string());
+        return Err(Error::InvalidArgument(
+            "Codex setup currently supports only user scope. Re-run without --scope project."
+                .to_string(),
+        ));
     }
 
     let config_path = codex_config_path();
     if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "Failed to create config directory {}: {e}",
-                parent.display()
-            )
-        })?;
+        fs::create_dir_all(parent)?;
     }
 
     let mut doc = read_toml_document_or_default(&config_path)?;
@@ -288,10 +324,10 @@ fn install_codex(scope: SetupScope, exe: &Path) -> Result<(), String> {
     }
 
     let servers = doc["mcp_servers"].as_table_mut().ok_or_else(|| {
-        format!(
+        Error::InvalidArgument(format!(
             "Codex config at {} has a non-table `mcp_servers` field",
             config_path.display()
-        )
+        ))
     })?;
 
     let mut server = Table::new();
@@ -301,12 +337,7 @@ fn install_codex(scope: SetupScope, exe: &Path) -> Result<(), String> {
     server["args"] = value(args);
     servers[SERVER_NAME] = Item::Table(server);
 
-    fs::write(&config_path, doc.to_string()).map_err(|e| {
-        format!(
-            "Failed to write Codex config {}: {e}",
-            config_path.display()
-        )
-    })?;
+    fs::write(&config_path, doc.to_string())?;
 
     Ok(())
 }
@@ -325,7 +356,7 @@ fn claude_has_server(scope: SetupScope) -> bool {
         .unwrap_or(false)
 }
 
-fn cursor_has_server(path: &Path) -> Result<bool, String> {
+fn cursor_has_server(path: &Path) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
     }
@@ -337,7 +368,7 @@ fn cursor_has_server(path: &Path) -> Result<bool, String> {
         .is_some_and(|servers| servers.contains_key(SERVER_NAME)))
 }
 
-fn codex_has_server(path: &Path) -> Result<bool, String> {
+fn codex_has_server(path: &Path) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
     }
@@ -348,26 +379,24 @@ fn codex_has_server(path: &Path) -> Result<bool, String> {
         .is_some_and(|servers| servers.contains_key(SERVER_NAME)))
 }
 
-fn read_json_object_or_default(path: &Path) -> Result<Value, String> {
+fn read_json_object_or_default(path: &Path) -> Result<Value> {
     if !path.exists() {
         return Ok(Value::Object(Map::new()));
     }
 
-    let raw =
-        fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-    serde_json::from_str(&raw)
-        .map_err(|e| format!("Failed to parse JSON in {}: {e}", path.display()))
+    let raw = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&raw)?)
 }
 
-fn read_toml_document_or_default(path: &Path) -> Result<DocumentMut, String> {
+fn read_toml_document_or_default(path: &Path) -> Result<DocumentMut> {
     if !path.exists() {
         return Ok(DocumentMut::new());
     }
 
-    let raw =
-        fs::read_to_string(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-    raw.parse::<DocumentMut>()
-        .map_err(|e| format!("Failed to parse TOML in {}: {e}", path.display()))
+    let raw = fs::read_to_string(path)?;
+    raw.parse::<DocumentMut>().map_err(|e| {
+        Error::InvalidArgument(format!("Failed to parse TOML in {}: {e}", path.display()))
+    })
 }
 
 fn cursor_config_path(scope: SetupScope, cwd: &Path) -> PathBuf {
@@ -396,16 +425,12 @@ fn command_available(cmd: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
-fn prompt_yes_no(prompt: &str) -> Result<bool, String> {
+fn prompt_yes_no(prompt: &str) -> Result<bool> {
     print!("{prompt}");
-    io::stdout()
-        .flush()
-        .map_err(|e| format!("Failed to flush stdout: {e}"))?;
+    io::stdout().flush()?;
 
     let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .map_err(|e| format!("Failed to read input: {e}"))?;
+    io::stdin().read_line(&mut input)?;
 
     let answer = input.trim().to_ascii_lowercase();
     Ok(matches!(answer.as_str(), "y" | "yes"))
@@ -531,5 +556,11 @@ command = "echo"
         assert!(doc.contains("[mcp_servers.other]"));
         assert!(doc.contains("[mcp_servers.tomegane]"));
         assert!(doc.contains(r#"args = ["mcp"]"#));
+    }
+
+    #[test]
+    fn install_codex_rejects_project_scope() {
+        let result = install_codex(SetupScope::Project, Path::new("/usr/local/bin/tomegane"));
+        assert!(matches!(result, Err(Error::InvalidArgument(_))));
     }
 }
